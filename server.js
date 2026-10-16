@@ -15,7 +15,7 @@ const { decodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.3.1';
+const VERSION = '3.4.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -218,7 +218,7 @@ function publicUser(u) {
     vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', abteilung: u.abteilung || '', standort: u.standort || '',
     arbeitsart: u.arbeitsart || '', beruf: u.beruf || '', endJahr: u.endJahr || '', lehrjahr: u.lehrjahr || '',
     endeErreicht: endeErreicht(u), endeHinweisGesehen: !!u.endeHinweisGesehen,
-    genau: !!u.genau, speicher: speicherInfo(u),
+    genau: u.genau !== false, speicher: speicherInfo(u),
     bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
     hasSignature: !!u.sig, woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
     tutorialDone: !!u.tutorialDone, active: u.active
@@ -392,6 +392,8 @@ async function ltRequest(text, level, timeoutMs = 45000) {
   const run = async () => {
     const body = new URLSearchParams({ text, language: 'de-DE' });
     if (level) body.set('level', level);
+    /* Zusaetzlich: fehlendes Satzzeichen am Ende pruefen (ist in LanguageTool sonst aus) */
+    body.set('enabledRules', 'PUNCTUATION_PARAGRAPH_END');
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -415,7 +417,7 @@ setTimeout(() => ltRequest('Das ist ein kurzer Test zum Aufwärmen.', '', 180000
 
 async function spellcheck(user, input) {
   let data;
-  try { data = await ltRequest(input, user.genau ? 'picky' : ''); }
+  try { data = await ltRequest(input, user.genau === false ? '' : 'picky'); }
   catch { return { error: 'Die Rechtschreibprüfung ist gerade nicht erreichbar.', matches: [] }; }
   const dict = new Set((user.woerterbuch || []).map((w) => w.toLowerCase()));
   const matches = (data.matches || []).map((m) => ({
@@ -426,7 +428,46 @@ async function spellcheck(user, input) {
     art: artOf(m),
     rule: m.rule ? m.rule.id : ''
   })).filter((m) => !(m.typo && dict.has(m.word.toLowerCase())));
+  /* Eigene Pruefungen fuer Berichtshefte, falls LanguageTool sie nicht meldet */
+  for (const e of eigeneRegeln(input)) {
+    if (!matches.some((m) => e.offset < m.offset + Math.max(1, m.length) && m.offset < e.offset + Math.max(1, e.length))) matches.push(e);
+  }
+  matches.sort((a, b) => a.offset - b.offset);
   return { matches };
+}
+
+/* Einfache, sichere Zusatzregeln: Satzzeichen am Ende, grosser Anfang, Leerzeichen um Satzzeichen */
+function eigeneRegeln(t) {
+  const out = [];
+  const add = (offset, length, message, rep, art = 'zs') => out.push({ offset, length, message, shortMessage: '', word: t.substr(offset, length), replacements: rep, typo: false, art, rule: 'BH_' + out.length });
+  for (const para of paragraphs(t)) {
+    const { start, text } = para;
+    const trimmed = text.replace(/\s+$/, '');
+    if (!trimmed) continue;
+    /* Satzzeichen am Ende eines Absatzes */
+    if (trimmed.length > 15 && !/[.!?:;)"“”»…]$/.test(trimmed)) {
+      const lastWord = /(\S+)$/.exec(trimmed);
+      add(start + trimmed.length - lastWord[1].length, lastWord[1].length, 'Am Ende des Satzes fehlt ein Punkt.', [lastWord[1] + '.']);
+    }
+    /* Absatz beginnt klein */
+    const first = /^\s*(\p{Ll})(\p{L}*)/u.exec(text);
+    if (first && !/^(z\.|d\.|u\.|ca\.|bzw\.|evtl\.|ggf\.|inkl\.)/.test(text.trim())) {
+      const off = start + first.index + first[0].length - first[1].length - first[2].length;
+      add(off, first[1].length + first[2].length, 'Ein Satz beginnt mit einem Großbuchstaben.', [first[1].toUpperCase() + first[2]], 'rs');
+    }
+  }
+  /* Leerzeichen vor Komma oder Punkt */
+  for (const m of t.matchAll(/(\S)( +)([,.;:!?])(?=\s|$)/g)) add(m.index + 1, m[2].length + 1, 'Vor einem Satzzeichen steht kein Leerzeichen.', [m[3]]);
+  /* Fehlendes Leerzeichen nach Komma (aber nicht bei Zahlen wie 7,6) */
+  for (const m of t.matchAll(/(\p{L}),(\p{L})/gu)) add(m.index + 1, 1, 'Nach einem Komma folgt ein Leerzeichen.', [', ']);
+  /* Doppelte Leerzeichen */
+  for (const m of t.matchAll(/(\S)( {2,})(\S)/g)) add(m.index + 1, m[2].length, 'Doppeltes Leerzeichen.', [' ']);
+  return out;
+}
+function paragraphs(t) {
+  const out = []; let pos = 0;
+  for (const line of t.split('\n')) { out.push({ start: pos, text: line }); pos += line.length + 1; }
+  return out;
 }
 
 /* ---------- HTTP ---------- */

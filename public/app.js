@@ -927,7 +927,7 @@
       <div class="card"><h2>Rechtschreibprüfung</h2>
         <p class="muted">Fehler werden direkt im Text farbig unterstrichen. Tippe auf ein markiertes Wort, um einen Vorschlag zu übernehmen.</p>
         <p class="legend"><span><span class="dot a-rs"></span>Rechtschreibung</span><span><span class="dot a-gr"></span>Grammatik</span><span><span class="dot a-zs"></span>Zeichensetzung</span><span><span class="dot a-st"></span>Stil</span></p>
-        <label class="switch"><span>Genaue Prüfung<br><span class="muted">Auch Stil, Füllwörter und Wiederholungen</span></span><input type="checkbox" id="genau" ${u.genau ? 'checked' : ''}></label></div>
+        <label class="switch"><span>Genaue Prüfung (empfohlen)<br><span class="muted">Zusätzlich Stil, Füllwörter und Wiederholungen</span></span><input type="checkbox" id="genau" ${u.genau ? 'checked' : ''}></label></div>
 
       <div class="card"><h2>Alle Berichte sichern</h2><p class="muted">Lädt alle deine Berichte als PDFs in einer ZIP-Datei herunter. Am besten ab und zu machen, spätestens zum Ende der Ausbildung.</p>
         <div class="actions nomargin"><button class="primary" data-export ${locked('pdf') ? 'disabled' : ''}>Alle Berichte herunterladen (ZIP)</button></div></div>
