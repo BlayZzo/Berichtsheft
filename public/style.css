@@ -287,3 +287,14 @@ body.guest .foot, body.guest #helpbtn, body.guest #nav { display: none !importan
 .legal h2 { font-size: 1.02rem; }
 .legal p, .legal li { font-size: .95rem; }
 body.guest .legal { margin-top: .5rem; }
+
+/* Berichtsliste gestaffelt */
+.gruppe { margin-top: 1.1rem; }
+.gruppe .list { margin-top: .4rem; }
+.gruppe p.muted { margin: .1rem 0 .2rem; }
+.ghead { display: flex; align-items: center; gap: .5rem; font-size: 1rem; font-weight: 600; margin: 0 0 .2rem; }
+.ghead .count { background: var(--line, #ddd); color: inherit; border-radius: 999px; padding: 0 .55rem; font-size: .8rem; font-weight: 600; }
+details.gruppe { border: 0; background: none; border-radius: 0; margin-bottom: 0; }
+details.gruppe > summary { padding: 0; }
+details.gruppe > summary::before { margin-right: 0; }
+details.gruppe > div { padding: 0; }

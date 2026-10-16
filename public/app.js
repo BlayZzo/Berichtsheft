@@ -372,8 +372,8 @@
 
   /* ---------- Startseite ---------- */
   function statusChip(r) {
-    if (r.status === 'abgeschlossen') return r.editable ? '<span class="chip ok">Unterschrieben</span>' : '<span class="chip">Archiviert</span>';
-    return '<span class="chip warn">In Arbeit</span>';
+    if (r.status === 'abgeschlossen') return r.editable ? '<span class="chip ok">Fertig</span>' : '<span class="chip">Archiviert</span>';
+    return '<span class="chip warn">In Bearbeitung</span>';
   }
   async function viewHome() {
     app.innerHTML = '<p class="loading">Lädt …</p>';
@@ -387,13 +387,27 @@
     if (sp && sp.prozent >= 90) html += `<div class="msg ${sp.prozent >= 100 ? 'err' : 'warn'}">Dein Speicherplatz ist ${sp.prozent >= 100 ? 'voll' : 'fast voll'} (${mb(sp.used)} von ${mb(sp.quota)} MB). Bitte beim Admin mehr Speicher anfragen.</div>`;
     if (!next.hasSignature) html += `<div class="msg info">✍ Noch keine Unterschrift hinterlegt. Das geht in den <a href="#/einstellungen">Einstellungen</a>.</div>`;
     html += `<button class="primary big" id="newbtn" ${locked('neu') ? 'disabled' : ''}><span class="plus">+</span> Neuer Wochenbericht</button>
-      <h2 class="mt2">Meine Berichte</h2>
-      <div class="list">${reports.map((r) => `<a class="item link" href="#/bericht/${esc(r.id)}">
+      <h2 class="mt2">Meine Berichte</h2>`;
+    const item = (r) => `<a class="item link" href="#/bericht/${esc(r.id)}">
         <div class="nr">${r.nr}</div>
         <div class="main"><strong>KW ${r.kw} · ${deShort(r.weekStart)} – ${de(r.bis)}</strong>
         <span class="muted">${esc(r.bereich || '–')}${r.status === 'abgeschlossen' ? ' · unterschrieben ' + deDate(r.signedAt) : ` · ${r.filled} von ${r.total} Tagen ausgefüllt`}</span>
-        ${r.status === 'abgeschlossen' ? '' : `<div class="progress"><span data-p="${Math.round(100 * r.filled / Math.max(1, r.total))}"></span></div>`}</div>
-        ${statusChip(r)}</a>`).join('') || '<div class="card muted">Noch keine Berichte. Tippe oben auf „Neuer Wochenbericht“.</div>'}</div>`;
+        ${r.status === 'abgeschlossen' ? '' : `<div class="progress"><span data-p="${Math.round(100 * r.filled / Math.max(1, r.total))}"></span></div>`}</div></a>`;
+    /* Gestaffelt: In Bearbeitung, Fertig (unterschrieben, noch aenderbar), Archiviert (Frist abgelaufen) */
+    const gruppen = [
+      ['In Bearbeitung', reports.filter((r) => r.status !== 'abgeschlossen'), ''],
+      ['Fertig', reports.filter((r) => r.status === 'abgeschlossen' && r.editable), `Unterschrieben, noch ${S.settings.bearbeitbarTage} Tage nach dem Unterschreiben änderbar`],
+      ['Archiviert', reports.filter((r) => r.status === 'abgeschlossen' && !r.editable), 'Bearbeitungsfrist abgelaufen, nur noch ansehen und herunterladen'],
+    ];
+    if (!reports.length) html += '<div class="card muted">Noch keine Berichte. Tippe oben auf „Neuer Wochenbericht“.</div>';
+    else for (const [titel, liste, info] of gruppen) {
+      if (!liste.length) continue;
+      const kopf = `<span>${titel}</span> <span class="count">${liste.length}</span>`;
+      const inhalt = `${info ? `<p class="muted small-t">${esc(info)}</p>` : ''}<div class="list">${liste.map(item).join('')}</div>`;
+      html += titel === 'Archiviert'
+        ? `<details class="gruppe"><summary class="ghead">${kopf}</summary>${inhalt}</details>`
+        : `<section class="gruppe"><h3 class="ghead">${kopf}</h3>${inhalt}</section>`;
+    }
     app.innerHTML = html;
     /* Fortschrittsbalken per Skript setzen (Inline-Styles sind aus Sicherheitsgruenden gesperrt) */
     fillBars();

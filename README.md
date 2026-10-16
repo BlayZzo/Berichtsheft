@@ -10,7 +10,8 @@ Eigenständiges Programm unter https://bh-bremen.de
 - **Original-Formular:** Ausgefüllt wird die Vorlage „Ausbildungsnachweis (Berichtsheft) – täglich“ der
   Handelskammer Bremen (`lib/vorlage/`). Die Vorlage bleibt unverändert, Text und Unterschrift kommen darüber.
 - **Neuer Wochenbericht:** „Diese Woche“, „Nächste Woche“ oder ein beliebiges Datum, die Woche geht immer von
-  Montag bis Sonntag. Fortlaufende Nummer (änderbar), Ausbildungsbereich wählen. Darunter die eigenen Berichte.
+  Montag bis Sonntag. Fortlaufende Nummer (änderbar), Ausbildungsbereich wählen. Darunter die eigenen Berichte, gestaffelt nach „In Bearbeitung“, „Fertig“ (unterschrieben, noch änderbar)
+  und „Archiviert“ (Frist abgelaufen, aufklappbar).
 - **Einstellungen:** Vorname, Nachname, Firma, Lehrberuf, Lehrjahr (Pflicht), Stunden, Berufsschultage, **Arbeitsorte**
   (Überschrift, Adresse, Bereich-Kürzel, Ausbilder/Geselle) und **Textbausteine**.
 - **Beim Schreiben:** ＋ Einfügen (Arbeitsorte/Bausteine an der Cursor-Stelle), ★ Markiertes merken,
