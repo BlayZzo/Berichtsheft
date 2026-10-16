@@ -15,7 +15,7 @@ const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.10.0';
+const VERSION = '3.11.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -780,7 +780,8 @@ route('POST', '/api/report/reopen', 'azubi', (ctx) => {
 
 route('POST', '/api/report/delete', 'azubi', (ctx) => {
   const r = findReport(ctx, ctx.body.id);
-  if (r.firstSignedAt) fail(400, 'Unterschriebene Berichte können nicht gelöscht werden.');
+  /* Unterschriebene Berichte nur mit ausdruecklicher Bestaetigung (Eintippen von LÖSCHEN in der Oberflaeche) */
+  if (r.firstSignedAt && ctx.body.bestaetigt !== true) fail(400, 'Bitte das Löschen des unterschriebenen Berichts bestätigen.');
   delete db.reports[r.id];
   save();
   return { ok: true };

@@ -497,7 +497,8 @@
         <p class="muted fname">${esc(r.file)}</p>${lockNote('pdf')}
         <div class="actions"><button class="primary" data-act="save" ${locked('pdf') ? 'disabled' : ''}>PDF speichern</button>
         <a class="btn ${locked('pdf') ? 'disabled' : ''}" href="/api/pdf?id=${esc(r.id)}&view=1" target="_blank" rel="noopener">Ansehen</a>
-        ${r.editable ? `<button data-act="reopen" ${locked('bearbeiten') ? 'disabled' : ''}>Nachträglich bearbeiten</button>` : ''}</div>
+        ${r.editable ? `<button data-act="reopen" ${locked('bearbeiten') ? 'disabled' : ''}>Nachträglich bearbeiten</button>` : ''}
+        <button class="danger" data-act="delete">Löschen</button></div>
         <p class="muted">${r.editable ? `Noch bearbeitbar bis ${de(r.deadline.slice(0, 10))}.` : 'Die Bearbeitungsfrist ist abgelaufen.'}</p></div>`;
     }
     html += `<div class="sheet">
@@ -520,7 +521,7 @@
     html += '</div>';
     if (ed) {
       html += `<div class="card actionsbar"><span class="savestate" id="savestate">✓ Gespeichert</span><span class="spacer"></span>
-        ${r.firstSignedAt ? '' : '<button class="small danger" data-act="delete">Löschen</button>'}
+        <button class="small danger" data-act="delete">Löschen</button>
         <button type="button" data-act="preview">Vorschau mit Unterschrift</button>
         <button class="primary" data-act="finish" ${locked('unterschreiben') ? 'disabled' : ''}>Prüfen & unterschreiben</button><div id="finerr" class="full">${lockNote('unterschreiben')}</div></div>`;
     }
@@ -936,9 +937,30 @@
     try { R.rep = (await api('POST', '/api/report/reopen', { id: R.rep.id })).report; drawReport(); } catch (x) { toast(x.message); }
   }
   async function del() {
-    const ok = await modal(`<h2>Bericht löschen?</h2><p>Bericht Nr. ${R.rep.nr} wird endgültig gelöscht.</p><div class="actions"><button class="danger" data-m="yes">Löschen</button><button data-m="no">Abbrechen</button></div>`);
-    if (ok !== 'yes') return;
-    try { R.dirty = false; await api('POST', '/api/report/delete', { id: R.rep.id }); R.rep = null; location.hash = '#/'; } catch (x) { toast(x.message); }
+    const r = R.rep;
+    if (!r.firstSignedAt) {
+      const ok = await modal(`<h2>Bericht löschen?</h2><p>Bericht Nr. ${r.nr} (KW ${r.kw}) wird endgültig gelöscht.</p><div class="actions"><button class="danger" data-m="yes">Löschen</button><button data-m="no">Abbrechen</button></div>`);
+      if (ok !== 'yes') return;
+    } else {
+      /* Unterschriebener Bericht: vorher PDF sichern anbieten und LÖSCHEN eintippen lassen */
+      for (;;) {
+        const res = await modal(`<form><h2>Unterschriebenen Bericht löschen?</h2>
+          <p>Bericht Nr. ${r.nr} (KW ${r.kw}) ist unterschrieben. Nach dem Löschen ist er <strong>weg</strong> und kann nicht wiederhergestellt werden. Speichere vorher das PDF, falls du es noch brauchst.</p>
+          <label for="delok">Zum Bestätigen <strong>LÖSCHEN</strong> eintippen</label>
+          <input id="delok" name="ok" autocomplete="off" autocapitalize="characters" required pattern="\\s*[Ll][Öö][Ss][Cc][Hh][Ee][Nn]\\s*">
+          <div class="actions"><button class="danger" data-m="form">Endgültig löschen</button>
+          <button type="button" data-m="pdf" ${locked('pdf') ? 'disabled' : ''}>Erst PDF speichern</button>
+          <button type="button" data-m="no">Abbrechen</button></div></form>`);
+        if (res === 'pdf') { try { await savePdf(r); } catch (x) { toast(x.message); } continue; }
+        if (!res || typeof res !== 'object') return;
+        break;
+      }
+    }
+    try {
+      R.dirty = false;
+      await api('POST', '/api/report/delete', { id: r.id, bestaetigt: !!r.firstSignedAt });
+      R.rep = null; toast(`Bericht Nr. ${r.nr} gelöscht.`); location.hash = '#/';
+    } catch (x) { toast(x.message); }
   }
 
   /* ---------- Einstellungen ---------- */

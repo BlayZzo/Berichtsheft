@@ -11,7 +11,8 @@ Eigenständiges Programm unter https://bh-bremen.de
   Handelskammer Bremen (`lib/vorlage/`). Die Vorlage bleibt unverändert, Text und Unterschrift kommen darüber.
 - **Neuer Wochenbericht:** „Diese Woche“, „Nächste Woche“ oder ein beliebiges Datum, die Woche geht immer von
   Montag bis Sonntag. Fortlaufende Nummer (änderbar), Ausbildungsbereich wählen. Darunter die eigenen Berichte, gestaffelt nach „In Bearbeitung“, „Fertig“ (unterschrieben, noch änderbar)
-  und „Archiviert“ (Frist abgelaufen, aufklappbar).
+  und „Archiviert“ (Frist abgelaufen, aufklappbar). Jeder Bericht lässt sich löschen, unterschriebene nur nach
+  Eintippen von „LÖSCHEN“ (mit Angebot, vorher das PDF zu speichern).
 - **Einstellungen:** Vorname, Nachname, Firma, Lehrberuf, Lehrjahr (Pflicht), Stunden, Berufsschultage, **Arbeitsorte**
   (Überschrift, Adresse, Bereich-Kürzel, Ausbilder/Geselle) und **Textbausteine**.
 - **Beim Schreiben:** ＋ Einfügen (Arbeitsorte/Bausteine an der Cursor-Stelle), ★ Markiertes merken,
