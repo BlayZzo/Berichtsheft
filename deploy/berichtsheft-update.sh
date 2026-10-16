@@ -13,7 +13,7 @@ CADDY_SITE=/etc/caddy/berichtsheft.caddy
 exec 9>/run/berichtsheft-update.lock
 flock -n 9 || exit 0
 
-# Falls die Caddy-Einstellung neu geschrieben wurde (z. B. durch die Zeus-OS-Einrichtung): Eintrag wiederherstellen
+# Falls die Caddy-Einstellung neu geschrieben wurde (z. B. durch ein anderes Programm): Eintrag wiederherstellen
 if [ -f "$CADDY_SITE" ] && ! grep -qxF "import $CADDY_SITE" /etc/caddy/Caddyfile; then
   printf '\nimport %s\n' "$CADDY_SITE" >> /etc/caddy/Caddyfile
   systemctl reload caddy && echo "$(date +%F_%H%M%S) Caddy-Eintrag wiederhergestellt" >> "$LOG"

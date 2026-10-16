@@ -2,7 +2,7 @@
 
 Digitaler Ausbildungsnachweis (wöchentlich) mit automatischem Vorausfüllen,
 Rechtschreib- und Grammatikprüfung, digitaler Unterschrift und PDF-Export.
-Läuft getrennt von Zeus OS unter eigener Adresse (Standard: `berichte.zeus-os.de`).
+Eigenständiges Programm mit eigener Adresse.
 
 ## Was es kann
 - **Admin** legt Konten an (vorläufiges Passwort, beim ersten Anmelden muss ein eigenes gewählt werden),
@@ -29,9 +29,12 @@ Läuft getrennt von Zeus OS unter eigener Adresse (Standard: `berichte.zeus-os.d
 ## Lokal testen
 `node server.js`, dann http://localhost:8090. Der Einrichtungs-Code steht im Konsolenfenster.
 
+## Server einrichten
+`DOMAIN=berichte.deine-domain.de bash /opt/berichtsheft/deploy/setup.sh`
+
 ## Server
 - Daten: `/var/lib/berichtsheft/data` (nie im Repository)
-- Port intern 3100, Caddy leitet `berichte.zeus-os.de` dorthin weiter
+- Port intern 3100, Caddy leitet die eigene Adresse dorthin weiter (mit https)
 - Rechtschreibprüfung: Dienst `languagetool`, nur lokal auf Port 8081
 - Updates von `main` alle 3 Minuten, mit Sicherung vorher und automatischem Zurückspringen
 - Protokoll: `/var/log/berichtsheft-update.log`

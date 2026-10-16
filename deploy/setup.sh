@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Berichtsheft - Einrichtung auf dem Server, auf dem schon Zeus OS laeuft.
-# Aufruf als root:  bash /opt/berichtsheft/deploy/setup.sh
-# Andere Adresse:   DOMAIN=berichte.example.de bash /opt/berichtsheft/deploy/setup.sh
-# Kann gefahrlos noch einmal ausgefuehrt werden. Zeus OS wird nicht angefasst.
+# Berichtsheft - Einrichtung auf einem Ubuntu-Server.
+# Aufruf als root:  DOMAIN=berichte.deine-domain.de bash /opt/berichtsheft/deploy/setup.sh
+# Kann gefahrlos noch einmal ausgefuehrt werden. Andere Programme auf dem Server werden nicht angefasst.
 set -euo pipefail
 
-DOMAIN="${DOMAIN:-berichte.zeus-os.de}"
+DOMAIN="${DOMAIN:-}"
 REPO_DIR=/opt/berichtsheft
 BASE_DIR=/var/lib/berichtsheft
 DATA_DIR=$BASE_DIR/data
@@ -19,9 +18,24 @@ say() { printf '\n\033[1;33m== %s\033[0m\n' "$1"; }
 
 [ "$(id -u)" = 0 ] || { echo "Bitte als root ausfuehren."; exit 1; }
 [ -f "$REPO_DIR/server.js" ] || { echo "Berichtsheft liegt nicht in $REPO_DIR."; exit 1; }
-command -v node >/dev/null || { echo "Node.js fehlt. Laeuft Zeus OS wirklich auf diesem Server?"; exit 1; }
-command -v caddy >/dev/null || { echo "Caddy fehlt. Laeuft Zeus OS wirklich auf diesem Server?"; exit 1; }
+[ -n "$DOMAIN" ] || { echo "Bitte die Adresse angeben, z. B.:  DOMAIN=berichte.deine-domain.de bash $0"; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
+
+say "0/6 Node.js und Caddy pruefen"
+apt-get update -y
+apt-get install -y curl ca-certificates gnupg git unzip debian-keyring debian-archive-keyring apt-transport-https
+if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  apt-get install -y nodejs
+fi
+if ! command -v caddy >/dev/null; then
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' -o /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update -y
+  apt-get install -y caddy
+fi
+[ -f /etc/caddy/Caddyfile ] || touch /etc/caddy/Caddyfile
+if command -v ufw >/dev/null && ufw status | grep -q active; then ufw allow 80/tcp; ufw allow 443/tcp; fi
 
 say "1/6 Benutzer und Ordner anlegen"
 id berichtsheft >/dev/null 2>&1 || useradd --system --home "$BASE_DIR" --shell /usr/sbin/nologin berichtsheft
@@ -32,8 +46,6 @@ chmod 700 "$BACKUP_DIR"
 chmod -R a+rX "$REPO_DIR"
 
 say "2/6 Rechtschreibpruefung (LanguageTool) einrichten - dauert ein paar Minuten"
-apt-get update -y
-apt-get install -y unzip curl
 apt-get install -y openjdk-21-jre-headless || apt-get install -y openjdk-17-jre-headless
 id languagetool >/dev/null 2>&1 || useradd --system --home "$LT_DIR" --shell /usr/sbin/nologin languagetool
 if [ ! -f "$LT_DIR/current/languagetool-server.jar" ]; then
@@ -46,7 +58,7 @@ if [ ! -f "$LT_DIR/current/languagetool-server.jar" ]; then
   ln -sfn "$LTV" "$LT_DIR/current"
 fi
 chown -R languagetool:languagetool "$LT_DIR"
-# Speicher an den Server anpassen (Zeus OS braucht auch noch Platz)
+# Speicher an den Server anpassen (andere Programme brauchen auch Platz)
 MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 if [ "$MEM_MB" -lt 2500 ]; then LT_MEM=384m; elif [ "$MEM_MB" -lt 5000 ]; then LT_MEM=640m; else LT_MEM=1g; fi
 cat > /etc/systemd/system/languagetool.service <<EOF
