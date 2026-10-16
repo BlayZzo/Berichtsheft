@@ -258,12 +258,14 @@
     return `<div class="grid"><div><label>Vorname <span class="req">*</span></label><input type="text" name="vorname" value="${esc(u.vorname)}" required></div>
       <div><label>Nachname <span class="req">*</span></label><input type="text" name="nachname" value="${esc(u.nachname)}" required></div></div>
       <label>Firma <span class="req">*</span></label><input type="text" name="firma" value="${esc(u.firma)}" required placeholder="Name deines Ausbildungsbetriebs">
-      <label>Arbeitsplatz <span class="req">*</span></label><input type="text" name="arbeitsplatz" value="${esc(u.arbeitsplatz)}" required placeholder="z. B. Lehrwerkstatt oder Baustellen-Team">
-      <div class="hint">Kein genauer Ort nötig, nur wo bzw. in welchem Bereich du arbeitest.</div>
+      <label>Abteilung / Bereich der Firma <span class="req">*</span></label><input type="text" name="abteilung" value="${esc(u.abteilung)}" required placeholder="z. B. bei der Deutschen Bahn: DB Services oder InfraGO">
+      <label>Standort (Stadt) <span class="req">*</span></label><input type="text" name="standort" value="${esc(u.standort)}" required placeholder="z. B. Bremen oder Oldenburg">
       <label>Wie arbeitest du? <span class="req">*</span></label>
       <div class="choice"><label class="inline"><input type="radio" name="arbeitsart" value="fest" ${u.arbeitsart === 'fest' ? 'checked' : ''} required> Fester Arbeitsplatz</label>
       <label class="inline"><input type="radio" name="arbeitsart" value="mobil" ${u.arbeitsart === 'mobil' ? 'checked' : ''}> Mobil (wechselnde Einsatzorte)</label></div>
-      <label>Lehrjahr <span class="req">*</span></label><select name="lehrjahr" required>${['', 1, 2, 3, 4].map((n) => `<option value="${n}" ${String(n) === String(u.lehrjahr) ? 'selected' : ''}>${n ? n + '. Lehrjahr' : 'Bitte wählen'}</option>`).join('')}</select>`;
+      <label>Lehrberuf <span class="req">*</span></label><input type="text" name="beruf" value="${esc(u.beruf)}" required placeholder="z. B. Elektroniker/in für Betriebstechnik">
+      <div class="grid"><div><label>Lehrjahr <span class="req">*</span></label><select name="lehrjahr" required>${['', 1, 2, 3, 4].map((n) => `<option value="${n}" ${String(n) === String(u.lehrjahr) ? 'selected' : ''}>${n ? n + '. Lehrjahr' : 'Bitte wählen'}</option>`).join('')}</select></div>
+      <div><label>Ausbildung endet im Jahr <span class="req">*</span></label><input type="number" name="endJahr" min="2020" max="2040" value="${esc(u.endJahr)}" required placeholder="z. B. 2029" inputmode="numeric"></div></div>`;
   }
 
   /* ---------- Einfuehrung ---------- */
@@ -302,7 +304,7 @@
     const q = (t, b, open) => `<details ${open ? 'open' : ''}><summary>${t}</summary><div>${b}</div></details>`;
     app.innerHTML = `<div class="toprow"><a href="#/" class="back">‹ Zurück</a></div><h1>Anleitung</h1><p class="muted">Kurz erklärt, Schritt für Schritt.</p>
       ${S.user && !isAdmin() ? '<div class="actions"><button class="primary" id="tourbtn">Einführung noch einmal ansehen</button></div><div class="mt"></div>' : ''}
-      ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Vorname, Nachname, Firma, Arbeitsplatz (fest oder mobil) und Lehrjahr eintragen.</li></ol>', true)}
+      ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Name, Firma mit Abteilung, Standort (Stadt), fest oder mobil, Lehrberuf, Lehrjahr und das Jahr, in dem die Ausbildung endet, eintragen.</li></ol>', true)}
       ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
       ${q('Neuen Wochenbericht anlegen', '<ol><li>Auf der Startseite <strong>Neuer Wochenbericht</strong> tippen.</li><li><strong>Diese Woche</strong> oder <strong>Nächste Woche</strong> wählen, oder ein beliebiges Datum. Die Woche wird automatisch auf Montag bis Sonntag gesetzt.</li><li>Die Nummer zählt von selbst weiter. Nur ändern, wenn sie nicht stimmt.</li><li>Ausbildungsbereich wählen, z. B. AW, BBS oder Betrieb.</li></ol>')}
       ${q('Tage ausfüllen', '<ul><li>Alles wird beim Schreiben gespeichert. Du kannst den Bericht jederzeit schließen und später weitermachen, auch auf einem anderen Gerät.</li><li><strong>Einfügen:</strong> setzt einen Arbeitsort oder Textbaustein an der Stelle ein, wo der Cursor steht.</li><li><strong>Markiertes merken:</strong> Text im Feld markieren und tippen. Er wird ein Textbaustein für später.</li><li><strong>Ideen:</strong> Vorschläge aus deinen früheren Berichten und den anderen Tagen der Woche. Einfügen oder kopieren, danach selbst anpassen.</li><li><strong>Rückgängig:</strong> macht das letzte Einfügen, die letzte Idee oder Korrektur wieder rückgängig.</li><li>Über das kleine Auswahlfeld beim Tag stellst du Urlaub, Krank, Feiertag oder Berufsschule ein.</li></ul>')}
@@ -310,6 +312,7 @@
       ${q('Speicherplatz', 'Jedes Konto hat eine Speichergrenze, damit der Server nicht voll wird. Wie viel belegt ist, siehst du in den Einstellungen. Berichte brauchen nur wenige KB. Wenn es voll ist, kann der Admin dir mehr geben.')}
       ${q('Unterschreiben und PDF speichern', '<ol><li>Unter dem Formular das Datum wählen (heute oder ein anderes).</li><li><strong>Prüfen & unterschreiben</strong> tippen. Es wird noch einmal alles geprüft.</li><li><strong>PDF speichern</strong> tippen. Am iPhone „In Dateien sichern“ wählen, am PC mit Chrome/Edge kannst du einen festen Ordner einstellen.</li></ol>')}
       ${q('Später etwas ändern', 'Nach dem Unterschreiben kannst du einen Bericht noch 3 Monate lang über <strong>Nachträglich bearbeiten</strong> ändern. Danach musst du neu unterschreiben, im PDF steht dann klein „korrigiert“.')}
+      ${q('Ende der Ausbildung', 'In deinen Angaben steht, wann deine Ausbildung endet. Ist das Jahr erreicht, kann dein Konto gelöscht werden. Du bekommst einmal einen Hinweis. Unter <strong>Einstellungen → Alle Berichte sichern</strong> lädst du jederzeit alle PDFs als ZIP herunter.')}
       ${q('Passwort vergessen?', 'Ein neues Passwort kann nur der Admin erstellen. Melde dich bei ihm, du bekommst ein neues Startpasswort. Damit meldest du dich an und legst wieder ein eigenes fest.')}
       ${q('Als App auf den Startbildschirm', '<ul><li><strong>iPhone (Safari):</strong> Teilen-Symbol → „Zum Home-Bildschirm“.</li><li><strong>Android (Chrome):</strong> Menü ⋮ → „Zum Startbildschirm hinzufügen“.</li></ul>')}
       <p class="muted mt2">${esc(HINWEIS)}</p>`;
@@ -327,7 +330,7 @@
     try { let st; [{ reports }, next, st] = await Promise.all([api('GET', '/api/reports'), api('GET', '/api/report/next'), api('GET', '/api/state')]); S = { ...S, ...st }; }
     catch (x) { app.innerHTML = `<div class="msg err">${esc(x.message)}</div>`; return; }
     const sperren = Object.keys(S.settings.funktionen).filter(locked);
-    let html = `<p class="hello"><strong>Hallo ${esc(S.user.vorname)}!</strong> <span class="muted">${esc(S.user.firma)} · ${esc(S.user.arbeitsplatz)} (${S.user.arbeitsart === 'mobil' ? 'mobil' : 'fest'})</span></p>`;
+    let html = `<p class="hello"><strong>Hallo ${esc(S.user.vorname)}!</strong> <span class="muted">${esc(S.user.firma)} · ${esc(S.user.abteilung)} · ${esc(S.user.standort)} (${S.user.arbeitsart === 'mobil' ? 'mobil' : 'fest'})</span></p>`;
     if (sperren.length) html += `<div class="msg warn">Gerade gesperrt: ${sperren.map((k) => esc(S.settings.funktionen[k])).join(', ')}. ${esc(S.settings.sperrText)}</div>`;
     const sp = S.user.speicher;
     if (sp && sp.prozent >= 90) html += `<div class="msg ${sp.prozent >= 100 ? 'err' : 'warn'}">Dein Speicherplatz ist ${sp.prozent >= 100 ? 'voll' : 'fast voll'} (${mb(sp.used)} von ${mb(sp.quota)} MB). Bitte beim Admin mehr Speicher anfragen.</div>`;
@@ -344,7 +347,37 @@
     /* Fortschrittsbalken per Skript setzen (Inline-Styles sind aus Sicherheitsgruenden gesperrt) */
     fillBars();
     const btn = $('#newbtn'); if (btn) btn.onclick = () => newReport(next);
+    if (S.user.endeErreicht && !S.user.endeHinweisGesehen) setTimeout(endeHinweis, 400);
   }
+
+  /* Einmaliger Hinweis, wenn das Endjahr der Ausbildung erreicht ist */
+  async function endeHinweis() {
+    const ch = await modal(`<div class="tour"><div class="big-ico">🎓</div><h2>Ausbildung bald geschafft</h2>
+      <p>Laut deinen Angaben endet deine Ausbildung ${S.user.endJahr}. Danach kann dein Konto mit allen Berichten <strong>gelöscht werden</strong>.</p>
+      <p><strong>Bitte sichere jetzt alle deine Berichte.</strong> Du bekommst alle PDFs in einer ZIP-Datei.</p>
+      <p class="muted small-t">Dieser Hinweis kommt nur einmal. Sichern kannst du später auch unter Einstellungen.</p>
+      <div class="actions"><button data-m="ok">Verstanden</button><button class="primary" data-m="zip">Jetzt alle sichern</button></div></div>`);
+    try { S.user = (await api('POST', '/api/me', { endeHinweisGesehen: true })).user; } catch {}
+    if (ch === 'zip') exportAll();
+  }
+  async function exportAll(btn) {
+    await busy(btn, async () => {
+      toast('ZIP wird erstellt …');
+      const res = await fetch('/api/export', { credentials: 'same-origin' });
+      if (!res.ok) { let m = 'Sichern hat nicht geklappt.'; try { m = (await res.json()).error || m; } catch {} return toast(m); }
+      const blob = await res.blob();
+      const name = (/filename\*=UTF-8''([^;]+)/.exec(res.headers.get('Content-Disposition') || '') || [])[1];
+      const file = new File([blob], name ? decodeURIComponent(name) : 'Berichtsheft.zip', { type: 'application/zip' });
+      if (navigator.canShare && navigator.canShare({ files: [file] }) && matchMedia('(pointer: coarse)').matches) {
+        try { await navigator.share({ files: [file], title: file.name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+      }
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      toast('Heruntergeladen: ' + file.name);
+    });
+  }
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-export]'); if (b) exportAll(b); });
 
   function bereichListe(extra) {
     const fromOrte = (S.user.orte || []).map((o) => o.label).filter(Boolean);
@@ -862,6 +895,9 @@
         <p class="legend"><span><span class="dot a-rs"></span>Rechtschreibung</span><span><span class="dot a-gr"></span>Grammatik</span><span><span class="dot a-zs"></span>Zeichensetzung</span><span><span class="dot a-st"></span>Stil</span></p>
         <label class="switch"><span>Genaue Prüfung<br><span class="muted">Auch Stil, Füllwörter und Wiederholungen</span></span><input type="checkbox" id="genau" ${u.genau ? 'checked' : ''}></label></div>
 
+      <div class="card"><h2>Alle Berichte sichern</h2><p class="muted">Lädt alle deine Berichte als PDFs in einer ZIP-Datei herunter. Am besten ab und zu machen, spätestens zum Ende der Ausbildung.</p>
+        <div class="actions nomargin"><button class="primary" data-export ${locked('pdf') ? 'disabled' : ''}>Alle Berichte herunterladen (ZIP)</button></div></div>
+
       <div class="card"><h2>Speicherplatz</h2>${speicherBar(u.speicher)}
         <p class="muted small-t">Berichte brauchen sehr wenig Platz. Wenn er voll wird, kann der Admin dir mehr geben.</p></div>
 
@@ -1020,7 +1056,7 @@
   }
 
   function zugangsText(name, pw) {
-    return `Dein Zugang zum Berichtsheft\nAdresse: ${location.origin}\nBenutzername: ${name}\nStartpasswort: ${pw}\n\nBeim ersten Anmelden legst du ein eigenes Passwort fest und trägst Name, Firma, Arbeitsplatz und Lehrjahr ein.`;
+    return `Dein Zugang zum Berichtsheft\nAdresse: ${location.origin}\nBenutzername: ${name}\nStartpasswort: ${pw}\n\nBeim ersten Anmelden legst du ein eigenes Passwort fest und trägst deine Angaben ein (Name, Firma, Standort, Lehrberuf, Ausbildungsende).`;
   }
   async function showPw(name, pw) {
     const t = zugangsText(name, pw);
@@ -1032,25 +1068,30 @@
 
   async function adminUsers() {
     const { users } = await api('GET', '/api/admin/users');
-    const azubis = users.filter((u) => u.role !== 'admin'), admins = users.filter((u) => u.role === 'admin');
+    const azubis = users.filter((u) => u.role !== 'admin').sort((x, y) => (y.endeErreicht - x.endeErreicht) || x.username.localeCompare(y.username));
+    const admins = users.filter((u) => u.role === 'admin');
+    const beendet = azubis.filter((u) => u.endeErreicht).length;
     const card = (u) => `<div class="item">
       <div class="main"><strong>${u.vorname || u.nachname ? esc(`${u.vorname} ${u.nachname}`) : '<span class="muted">Noch nicht eingerichtet</span>'} <span class="muted">@${esc(u.username)}</span></strong>
-        <span class="muted">${u.firma ? esc(u.firma) : 'Firma –'} · ${u.arbeitsplatz ? esc(u.arbeitsplatz) : 'Arbeitsplatz –'}${u.arbeitsart ? ` (${u.arbeitsart === 'mobil' ? 'mobil' : 'fest'})` : ''}</span><br>
+        <span class="muted">${u.firma ? esc(u.firma) : 'Firma –'}${u.abteilung ? ' · ' + esc(u.abteilung) : ''} · ${u.standort ? esc(u.standort) : 'Standort –'}${u.arbeitsart ? ` (${u.arbeitsart === 'mobil' ? 'mobil' : 'fest'})` : ''}</span><br>
+        ${u.role === 'admin' ? '' : `<span class="muted">${u.beruf ? esc(u.beruf) : 'Lehrberuf –'} · Ausbildungsende ${u.endJahr || '–'}</span><br>`}
         <span class="muted small-t">Dabei ${since(u.created)} · zuletzt aktiv ${ago(u.lastSeen)}${u.role === 'admin' ? '' : ` · ${u.reports} Berichte`}</span>
         ${u.role === 'admin' ? '' : speicherBar(u.speicher)}</div>
-      ${u.active ? '' : '<span class="chip bad">Gesperrt</span>'}${u.mustChange ? '<span class="chip warn">Startpasswort</span>' : ''}${u.role === 'admin' ? '<span class="chip brand">Admin</span>' : ''}
+      ${u.active ? '' : '<span class="chip bad">Gesperrt</span>'}${u.mustChange ? '<span class="chip warn">Startpasswort</span>' : ''}${u.endeErreicht ? '<span class="chip bad">Ausbildung beendet</span>' : ''}${u.role === 'admin' ? '<span class="chip brand">Admin</span>' : ''}
       <div class="row">
         <button class="small" data-u="${esc(u.id)}" data-a="edit">Bearbeiten</button>
         <button class="small" data-u="${esc(u.id)}" data-a="pw">Neues Passwort</button>
         ${u.role === 'admin' ? '' : `<button class="small" data-u="${esc(u.id)}" data-a="extend">Frist +30 Tage</button>`}
-        ${u.id === S.user.id ? '' : `<button class="small ${u.active ? 'danger' : ''}" data-u="${esc(u.id)}" data-a="active" data-v="${u.active ? '0' : '1'}">${u.active ? 'Sperren' : 'Entsperren'}</button>`}
+        ${u.id === S.user.id ? '' : `<button class="small ${u.active ? 'danger' : ''}" data-u="${esc(u.id)}" data-a="active" data-v="${u.active ? '0' : '1'}">${u.active ? 'Sperren' : 'Entsperren'}</button>
+        <button class="small danger" data-u="${esc(u.id)}" data-a="delete">Löschen</button>`}
       </div></div>`;
     $('#adm').innerHTML = `<div class="card"><h2>Neues Konto</h2>
-      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma, Arbeitsplatz (mobil oder fest) und Lehrjahr ein.</p>
+      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma mit Abteilung, Standort (Stadt), fest oder mobil, Lehrberuf, Lehrjahr und Ausbildungsende ein.</p>
       <form id="nf" class="row"><input type="text" name="username" autocapitalize="none" required placeholder="z. B. carlo.w" class="grow">
       <select name="role" class="auto-w"><option value="azubi">Azubi</option><option value="admin">Admin</option></select><button class="primary">Anlegen</button></form>
       <div id="nerr"></div>
       <p class="muted small-t">Tipp: Lege dir für deine eigenen Berichte ein normales Azubi-Konto an. Der Admin-Zugang ist nur zum Verwalten.</p></div>
+      ${beendet ? `<div class="msg warn">${beendet} Konto${beendet > 1 ? 'en' : ''} mit beendeter Ausbildung (Endjahr erreicht). Diese stehen oben und können gelöscht werden.</div>` : ''}
       <h2>Azubis (${azubis.length})</h2><div class="list">${azubis.map(card).join('') || '<div class="card muted">Noch keine Konten.</div>'}</div>
       <h2 class="mt2">Admins (${admins.length})</h2><div class="list">${admins.map(card).join('')}</div>
       <p class="muted small-t mt2">Aus Datenschutzgründen siehst du hier keine Berichte, nur die Kontodaten und wie viel Speicher belegt ist.</p>`;
@@ -1080,10 +1121,23 @@
         if (await modal(`<h2>Bearbeitungsfrist verlängern?</h2><p>Alle unterschriebenen Berichte von @${esc(u.username)} sind dann noch 30 Tage ab heute bearbeitbar.</p><div class="actions"><button class="primary" data-m="y">Verlängern</button><button data-m="n">Abbrechen</button></div>`) !== 'y') return;
         body.extendDays = 30;
       }
+      if (a === 'delete') {
+        const res = await modal(`<form><h2>@${esc(u.username)} endgültig löschen?</h2>
+          <p>Das Konto und <strong>alle ${u.reports} Berichte</strong> werden gelöscht. Das kann nicht rückgängig gemacht werden.</p>
+          ${u.endeErreicht ? '' : '<div class="msg warn">Die Ausbildung ist laut Angabe noch nicht beendet.</div>'}
+          <p class="muted">Tipp: Vorher die Person bitten, unter Einstellungen „Alle Berichte sichern“ zu tippen.</p>
+          <label>Zur Bestätigung den Benutzernamen eintippen: <code>${esc(u.username)}</code></label><input type="text" name="confirm" autocapitalize="none" autocomplete="off" required>
+          <div class="actions"><button class="danger" data-m="form">Endgültig löschen</button><button type="button" data-m="no">Abbrechen</button></div></form>`);
+        if (!res || typeof res !== 'object') return;
+        try { await api('POST', '/api/admin/delete', { id: u.id, confirm: res.confirm }); toast('Konto gelöscht.'); adminUsers(); } catch (x) { toast(x.message); }
+        return;
+      }
       if (a === 'edit') {
         const res = await modal(`<form><h2>@${esc(u.username)} bearbeiten</h2>
           <div class="grid"><div><label>Vorname</label><input type="text" name="vorname" value="${esc(u.vorname)}"></div><div><label>Nachname</label><input type="text" name="nachname" value="${esc(u.nachname)}"></div></div>
-          <label>Firma</label><input type="text" name="firma" value="${esc(u.firma)}"><label>Arbeitsplatz</label><input type="text" name="arbeitsplatz" value="${esc(u.arbeitsplatz)}">
+          <label>Firma</label><input type="text" name="firma" value="${esc(u.firma)}"><label>Abteilung / Bereich</label><input type="text" name="abteilung" value="${esc(u.abteilung)}">
+          <label>Standort (Stadt)</label><input type="text" name="standort" value="${esc(u.standort)}">
+          <div class="grid"><div><label>Lehrberuf</label><input type="text" name="beruf" value="${esc(u.beruf)}"></div><div><label>Ausbildungsende (Jahr)</label><input type="number" name="endJahr" min="2000" max="2100" value="${esc(u.endJahr)}"></div></div>
           <label>Arbeitsweise</label><select name="arbeitsart"><option value="">–</option><option value="fest" ${u.arbeitsart === 'fest' ? 'selected' : ''}>Fester Arbeitsplatz</option><option value="mobil" ${u.arbeitsart === 'mobil' ? 'selected' : ''}>Mobil</option></select>
           ${u.role === 'admin' ? '' : `<label>Speicherplatz in MB</label><input type="number" name="speicherMB" min="1" max="10000" value="${u.speicherMB || ''}" placeholder="leer = Standard für alle">
           <div class="hint">Belegt: ${mb(u.speicher.used)} MB. Leer lassen für den Standard.</div>`}

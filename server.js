@@ -13,8 +13,9 @@ const W = require('./lib/weeks');
 const { fill, fitDay } = require('./lib/fill');
 const { decodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
+const { zip } = require('./lib/zip');
 
-const VERSION = '3.1.0';
+const VERSION = '3.2.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -92,7 +93,7 @@ function merge(def, val) {
 const db = readJson(DB_FILE, { users: {}, reports: {}, settings: {} });
 db.users ||= {}; db.reports ||= {};
 db.settings = merge(DEFAULT_SETTINGS, db.settings || {});
-for (const u of Object.values(db.users)) if (u.standort && !u.arbeitsplatz) { u.arbeitsplatz = u.standort; delete u.standort; }
+for (const u of Object.values(db.users)) if (u.arbeitsplatz && !u.standort) { u.standort = u.arbeitsplatz; delete u.arbeitsplatz; }
 let saveTimer = null;
 function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => writeJson(DB_FILE, db), 50); }
 function saveNow() { clearTimeout(saveTimer); writeJson(DB_FILE, db); }
@@ -214,7 +215,9 @@ function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id, username: u.username, role: u.role, mustChange: !!u.mustChange, created: u.created,
-    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', arbeitsplatz: u.arbeitsplatz || '', arbeitsart: u.arbeitsart || '', lehrjahr: u.lehrjahr || '',
+    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', abteilung: u.abteilung || '', standort: u.standort || '',
+    arbeitsart: u.arbeitsart || '', beruf: u.beruf || '', endJahr: u.endJahr || '', lehrjahr: u.lehrjahr || '',
+    endeErreicht: endeErreicht(u), endeHinweisGesehen: !!u.endeHinweisGesehen,
     genau: !!u.genau, speicher: speicherInfo(u),
     bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
     hasSignature: !!u.sig, woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
@@ -222,7 +225,10 @@ function publicUser(u) {
   };
 }
 /* Pflichtangaben: Azubis brauchen Name, Firma, Standort und Lehrjahr */
-const profileMissing = (u) => (u.role === 'admin' ? [] : ['vorname', 'nachname', 'firma', 'arbeitsplatz', 'arbeitsart', 'lehrjahr'].filter((k) => !u[k]));
+const PFLICHT = ['vorname', 'nachname', 'firma', 'abteilung', 'standort', 'arbeitsart', 'beruf', 'lehrjahr', 'endJahr'];
+const profileMissing = (u) => (u.role === 'admin' ? [] : PFLICHT.filter((k) => !u[k]));
+/* Ausbildung beendet, sobald das eingetragene Endjahr erreicht ist */
+const endeErreicht = (u) => !!u.endJahr && Number(heute().slice(0, 4)) >= Number(u.endJahr);
 
 /* ---------- Speicherplatz pro Konto (nur die Groesse wird gezaehlt, nicht der Inhalt angesehen) ---------- */
 const MB = 1024 * 1024;
@@ -524,8 +530,11 @@ route('POST', '/api/password', 'user', (ctx) => {
 route('POST', '/api/me', 'user', (ctx) => {
   const u = ctx.user, b = ctx.body;
   for (const k of ['vorname', 'nachname']) if (k in b) { const v = str(b[k], 60); if (!v && u.role !== 'admin') fail(400, 'Vorname und Nachname sind Pflichtfelder.'); u[k] = v; }
-  for (const k of ['firma', 'arbeitsplatz']) if (k in b) { const v = str(b[k], 120); if (!v && u.role !== 'admin') fail(400, 'Firma und Arbeitsplatz sind Pflichtfelder.'); u[k] = v; }
-  if ('arbeitsart' in b) { if (!['mobil', 'fest'].includes(b.arbeitsart)) fail(400, 'Bitte auswählen, ob dein Arbeitsplatz mobil oder fest ist.'); u.arbeitsart = b.arbeitsart; }
+  const NAMEN = { firma: 'Firma', abteilung: 'Abteilung/Bereich', standort: 'Standort', beruf: 'Lehrberuf' };
+  for (const k of Object.keys(NAMEN)) if (k in b) { const v = str(b[k], 120); if (!v && u.role !== 'admin') fail(400, `${NAMEN[k]} ist ein Pflichtfeld.`); u[k] = v; }
+  if ('arbeitsart' in b) { if (!['mobil', 'fest'].includes(b.arbeitsart)) fail(400, 'Bitte auswählen, ob du fest oder mobil arbeitest.'); u.arbeitsart = b.arbeitsart; }
+  if ('endJahr' in b) { const y = Math.round(num(b.endJahr, 2000, 2100, 0)); if (!y) fail(400, 'Bitte das Jahr eintragen, in dem deine Ausbildung endet.'); u.endJahr = y; }
+  if ('endeHinweisGesehen' in b) u.endeHinweisGesehen = !!b.endeHinweisGesehen;
   if ('genau' in b) u.genau = !!b.genau;
   if ('lehrjahr' in b) u.lehrjahr = Math.round(num(b.lehrjahr, 1, 4, 1));
   if ('bereich' in b) u.bereich = str(b.bereich, 40);
@@ -604,7 +613,7 @@ function schoolWeek(days, bereich) {
 route('POST', '/api/report/new', 'azubi', (ctx) => {
   gesperrt('neu');
   const u = ctx.user, b = ctx.body;
-  if (profileMissing(u).length) fail(400, 'Bitte zuerst in den Einstellungen Name, Firma, Arbeitsplatz und Lehrjahr eintragen.');
+  if (profileMissing(u).length) fail(400, 'Bitte zuerst in den Einstellungen deine Angaben vervollständigen.');
   const d = str(b.weekStart, 10) || heute();
   if (!W.isDate(d)) fail(400, 'Bitte ein gültiges Datum wählen.');
   const ws = W.mondayOf(d);
@@ -715,6 +724,24 @@ route('GET', '/api/pdf', 'azubi', (ctx) => {
   return { raw: pdf, type: 'application/pdf', headers: { 'Content-Disposition': `${disp}; filename="${asciiName(name)}"; filename*=UTF-8''${encodeURIComponent(name)}` } };
 });
 
+/* Alle eigenen Berichte als PDFs in einer ZIP-Datei sichern */
+route('GET', '/api/export', 'azubi', (ctx) => {
+  gesperrt('pdf');
+  const list = ownReports(ctx.user.id).sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+  if (!list.length) fail(404, 'Noch keine Berichte vorhanden.');
+  const seen = new Set();
+  const files = list.map((r) => {
+    let { pdf, name } = buildPdf(r);
+    if (r.status !== 'abgeschlossen') name = name.replace(/\.pdf$/, '_ENTWURF.pdf');
+    let n = name, k = 2;
+    while (seen.has(n)) n = name.replace(/\.pdf$/, `_${k++}.pdf`);
+    seen.add(n);
+    return { name: n, data: pdf };
+  });
+  const u = ctx.user, file = `Berichtsheft_${(u.nachname || u.username).replace(/[^\p{L}\p{N}_-]+/gu, '_')}_alle_${heute()}.zip`;
+  return { raw: zip(files), type: 'application/zip', headers: { 'Content-Disposition': `attachment; filename="${asciiName(file)}"; filename*=UTF-8''${encodeURIComponent(file)}` } };
+});
+
 route('GET', '/api/blank', 'user', () => {
   const { pdf } = buildPdf({ days: [], weekStart: heute(), nr: 0, status: 'entwurf' }, { blank: true });
   return { raw: pdf, type: 'application/pdf', headers: { 'Content-Disposition': 'inline; filename="Vorlage.pdf"' } };
@@ -725,7 +752,8 @@ route('GET', '/api/blank', 'user', () => {
 function adminUserView(u) {
   return {
     id: u.id, username: u.username, role: u.role, active: u.active, mustChange: !!u.mustChange,
-    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', arbeitsplatz: u.arbeitsplatz || '', arbeitsart: u.arbeitsart || '',
+    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', abteilung: u.abteilung || '', standort: u.standort || '',
+    arbeitsart: u.arbeitsart || '', beruf: u.beruf || '', endJahr: u.endJahr || '', endeErreicht: endeErreicht(u),
     speicher: speicherInfo(u), speicherMB: u.speicherMB || null, created: u.created, lastSeen: u.lastSeen || u.lastLogin || null, reports: ownReports(u.id).length
   };
 }
@@ -760,7 +788,8 @@ route('POST', '/api/admin/user', 'admin', (ctx) => {
     u.active = !!b.active; if (!u.active) endSessions(u.id);
   }
   for (const k of ['vorname', 'nachname']) if (k in b) u[k] = str(b[k], 60);
-  for (const k of ['firma', 'arbeitsplatz']) if (k in b) u[k] = str(b[k], 120);
+  for (const k of ['firma', 'abteilung', 'standort', 'beruf']) if (k in b) u[k] = str(b[k], 120);
+  if ('endJahr' in b) u.endJahr = Math.round(num(b.endJahr, 2000, 2100, 0)) || '';
   if ('arbeitsart' in b && ['mobil', 'fest', ''].includes(b.arbeitsart)) u.arbeitsart = b.arbeitsart;
   if ('speicherMB' in b) { const v = b.speicherMB === null || b.speicherMB === '' ? null : num(b.speicherMB, 1, 10000, null); u.speicherMB = v; }
   if (b.extendDays) {
@@ -770,6 +799,24 @@ route('POST', '/api/admin/user', 'admin', (ctx) => {
   }
   save();
   return { user: adminUserView(u), ...out };
+});
+
+/* Konto endgueltig loeschen (z. B. nach Ende der Ausbildung). Bestaetigung durch Eintippen des Benutzernamens. */
+route('POST', '/api/admin/delete', 'admin', (ctx) => {
+  const u = db.users[str(ctx.body.id, 60)];
+  if (!u) fail(404, 'Unbekanntes Konto.');
+  if (u.id === ctx.user.id) fail(400, 'Du kannst dein eigenes Admin-Konto nicht löschen.');
+  if (str(ctx.body.confirm, 40).toLowerCase() !== u.username) fail(400, 'Zur Bestätigung bitte den Benutzernamen genau eintippen.');
+  const sigs = new Set([u.sig]);
+  for (const r of ownReports(u.id)) { sigs.add(r.sig); for (const h of r.history || []) sigs.add(h.sig); delete db.reports[r.id]; }
+  endSessions(u.id);
+  delete db.users[u.id];
+  /* Unterschriften loeschen, die sonst niemand mehr braucht */
+  const used = new Set(Object.values(db.users).map((x) => x.sig));
+  for (const r of Object.values(db.reports)) { used.add(r.sig); for (const h of r.history || []) used.add(h.sig); }
+  for (const s of sigs) if (s && !used.has(s)) { try { fs.unlinkSync(path.join(SIG_DIR, s + '.png')); } catch {} sigSizes.delete(s); }
+  saveNow();
+  return { ok: true };
 });
 
 route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER, funktionen: FUNKTIONEN }));

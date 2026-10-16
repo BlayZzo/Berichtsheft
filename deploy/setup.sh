@@ -46,6 +46,16 @@ chmod 750 "$BASE_DIR"
 chmod 700 "$BACKUP_DIR"
 chmod -R a+rX "$REPO_DIR"
 
+# Kleine Server (z. B. 1 GB RAM): Auslagerungsspeicher anlegen, damit alles nebeneinander laeuft
+MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ "$MEM_MB" -lt 3000 ] && ! swapon --show | grep -q .; then
+  say "Kleiner Arbeitsspeicher ($MEM_MB MB): 2 GB Auslagerungsspeicher anlegen"
+  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  sysctl -w vm.swappiness=20 >/dev/null; echo 'vm.swappiness=20' > /etc/sysctl.d/90-berichtsheft.conf
+fi
+
 say "2/6 Rechtschreibpruefung (LanguageTool) einrichten - dauert ein paar Minuten"
 apt-get install -y openjdk-21-jre-headless || apt-get install -y openjdk-17-jre-headless
 id languagetool >/dev/null 2>&1 || useradd --system --home "$LT_DIR" --shell /usr/sbin/nologin languagetool
@@ -60,8 +70,7 @@ if [ ! -f "$LT_DIR/current/languagetool-server.jar" ]; then
 fi
 chown -R languagetool:languagetool "$LT_DIR"
 # Speicher an den Server anpassen (andere Programme brauchen auch Platz)
-MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
-if [ "$MEM_MB" -lt 2500 ]; then LT_MEM=384m; elif [ "$MEM_MB" -lt 5000 ]; then LT_MEM=640m; else LT_MEM=1g; fi
+if [ "$MEM_MB" -lt 1500 ]; then LT_MEM=320m; LT_MAX=600M; elif [ "$MEM_MB" -lt 2500 ]; then LT_MEM=384m; LT_MAX=700M; elif [ "$MEM_MB" -lt 5000 ]; then LT_MEM=640m; LT_MAX=1000M; else LT_MEM=1g; LT_MAX=1500M; fi
 cat > /etc/systemd/system/languagetool.service <<EOF
 [Unit]
 Description=LanguageTool Rechtschreibpruefung (nur lokal)
@@ -71,9 +80,11 @@ After=network.target
 User=languagetool
 Group=languagetool
 WorkingDirectory=$LT_DIR/current
-ExecStart=/usr/bin/java -Xmx$LT_MEM -cp languagetool-server.jar org.languagetool.server.HTTPServer --port $LT_PORT
+ExecStart=/usr/bin/java -Xmx$LT_MEM -XX:+UseSerialGC -Xss512k -cp languagetool-server.jar org.languagetool.server.HTTPServer --port $LT_PORT
 Restart=always
 RestartSec=5
+MemoryMax=$LT_MAX
+Nice=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

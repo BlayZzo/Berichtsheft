@@ -22,11 +22,14 @@ Eigenständiges Programm unter https://bh-bremen.de
 - **Unterschrift** mit wählbarem Datum, jedes Mal minimal anders gesetzt. PDF `Berichtsheft_Nachname_NRx.pdf`,
   am PC fester Speicherordner, am Handy „In Dateien sichern“. 90 Tage nachträglich bearbeitbar.
 - **Konten:** eigener reiner Admin-Zugang plus normale Konten. Admin gibt nur einen Benutzernamen ein und bekommt
-  ein kurzes Startpasswort. Beim ersten Anmelden: eigenes Passwort, dann Name, Firma, Arbeitsplatz (fest oder mobil),
-  Lehrjahr. Ein neues Passwort bei Verlust kann nur der Admin erstellen.
+  ein kurzes Startpasswort. Beim ersten Anmelden: eigenes Passwort, dann Name, Firma, Abteilung, Standort (Stadt), fest oder mobil,
+  Lehrberuf, Lehrjahr und Ausbildungsende (Jahr). Ein neues Passwort bei Verlust kann nur der Admin erstellen.
 - **Speicherplatz pro Konto:** Standard 20 MB (Admin → Einstellungen), pro Person änderbar. Der Admin sieht nur,
   wie viel belegt ist, nicht was.
-- **Admin sieht keine Berichte**, nur Name, Firma, Arbeitsplatz, dabei seit, zuletzt aktiv, Speicher. Bearbeiten, sperren,
+- **Admin sieht keine Berichte**, nur Name, Firma, Abteilung, Standort, Lehrberuf, Ausbildungsende, dabei seit,
+  zuletzt aktiv, Speicher. Konten mit erreichtem Endjahr werden oben markiert und können gelöscht werden.
+- **Ende der Ausbildung:** Einmaliger Hinweis an die Person, dass das Konto gelöscht werden kann, mit
+  „Alle Berichte sichern“ (alle PDFs als ZIP, auch jederzeit in den Einstellungen). Bearbeiten, sperren,
   neues Startpasswort (mit Bestätigung durch Eintippen des Benutzernamens), Bearbeitungsfrist verlängern.
 - **Funktionen sperren:** Anmelden, neue Berichte, Schreiben, Rechtschreibprüfung, Ideen, Unterschreiben, PDF
   einzeln vorübergehend abschalten, mit eigenem Hinweistext.
