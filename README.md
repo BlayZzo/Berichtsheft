@@ -4,23 +4,28 @@ Digitaler Ausbildungsnachweis (wöchentlich) mit automatischem Vorausfüllen,
 Rechtschreib- und Grammatikprüfung, digitaler Unterschrift und PDF-Export.
 Eigenständiges Programm unter https://bh-bremen.de
 
+**Privates Hilfsprogramm, nicht offiziell. Kein Angebot der Handelskammer Bremen (IHK) und ohne Verbindung zu Ausbildungsbetrieben.**
+
 ## Was es kann
 - **Original-Formular:** Ausgefüllt wird die Vorlage „Ausbildungsnachweis (Berichtsheft) – täglich“ der
   Handelskammer Bremen (`lib/vorlage/`). Die Vorlage bleibt unverändert, Text und Unterschrift kommen darüber.
-- **Neuer Wochenbericht** mit einem Tipp: Woche und fortlaufende Nummer werden vorgeschlagen (Nummer änderbar),
-  Ausbildungsbereich auswählen (z. B. AW, BBS, Betrieb). Darunter die Liste der eigenen Berichte.
-- **Automatisch ausgefüllt:** Name, Ausbildungsjahr, Woche vom/bis, Stunden aus den Einstellungen,
-  Berufsschultage und Feiertage (Bremen voreingestellt). Bei „BBS“ wird die ganze Woche als Schule vorbelegt.
-- **Speichert von selbst** bei jeder Änderung. Man kann jeden Tag etwas eintragen und erst am Ende der Woche unterschreiben.
-- **Rechtschreibung und Grammatik:** LanguageTool auf dem eigenen Server. Vorschläge antippen, „So lassen“ oder
-  ins eigene Wörterbuch. Zu langer Text für ein Feld wird angezeigt.
-- **Unterschrift** einmal in den Einstellungen hinterlegen. Beim Unterschreiben Datum wählen (heute oder ein anderes),
-  die Unterschrift sitzt jedes Mal minimal anders, wie von Hand.
-- **PDF** mit festem Namen, Standard `Berichtsheft_{nachname}_NR{nr}` → `Berichtsheft_Witting_NR7.pdf`.
-  Am PC (Chrome/Edge) kann ein fester Speicherordner eingestellt werden, am Handy öffnet sich „In Dateien sichern“.
-- **Nachträglich bearbeiten:** 90 Tage nach dem Unterschreiben (einstellbar). Korrekturen werden klein im PDF vermerkt.
-- **Admin:** Konten anlegen, sperren, Passwort zurücksetzen, alle Berichte sehen, Fristen verlängern,
-  Bereiche, Dateiname, Feiertage und vorausgefüllte Texte einstellen.
+- **Neuer Wochenbericht:** „Diese Woche“, „Nächste Woche“ oder ein beliebiges Datum, die Woche geht immer von
+  Montag bis Sonntag. Fortlaufende Nummer (änderbar), Ausbildungsbereich wählen. Darunter die eigenen Berichte.
+- **Einstellungen:** Name, Firma, Standort, Lehrjahr (Pflicht), Stunden, Berufsschultage, **Arbeitsorte**
+  (Überschrift, Adresse, Bereich-Kürzel, Ausbilder/Geselle) und **Textbausteine**.
+- **Beim Schreiben:** ＋ Einfügen (Arbeitsorte/Bausteine an der Cursor-Stelle), ★ Markiertes merken,
+  💡 Ideen (aus den eigenen früheren Berichten und der Woche, einfügen oder kopieren), ↶ Rückgängig.
+  Speichert bei jeder Änderung, auf jedem Gerät weiter bearbeitbar (Handy schreiben, Tablet herunterladen).
+- **Rechtschreibung und Grammatik** mit LanguageTool auf dem eigenen Server, Vorschläge zum Antippen, Wörterbuch.
+- **Unterschrift** mit wählbarem Datum, jedes Mal minimal anders gesetzt. PDF `Berichtsheft_Nachname_NRx.pdf`,
+  am PC fester Speicherordner, am Handy „In Dateien sichern“. 90 Tage nachträglich bearbeitbar.
+- **Konten:** eigener reiner Admin-Zugang plus normale Konten. Admin gibt nur einen Benutzernamen ein und bekommt
+  ein kurzes Startpasswort. Beim ersten Anmelden: eigenes Passwort, dann Name, Firma, Standort, Lehrjahr.
+- **Admin sieht keine Berichte**, nur Name, Firma, Standort, dabei seit, zuletzt aktiv. Bearbeiten, sperren,
+  neues Startpasswort (mit Bestätigung durch Eintippen des Benutzernamens), Bearbeitungsfrist verlängern.
+- **Funktionen sperren:** Anmelden, neue Berichte, Schreiben, Rechtschreibprüfung, Ideen, Unterschreiben, PDF
+  einzeln vorübergehend abschalten, mit eigenem Hinweistext.
+- **Hell/Dunkel**, kurze überspringbare Einführung beim ersten Start, Anleitung über „?“.
 
 ## Aufbau
 - `server.js` – Server ohne Zusatzpakete (Node.js 20 oder neuer)

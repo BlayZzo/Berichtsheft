@@ -7,8 +7,11 @@
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
   const KURZ = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  const HINWEIS = 'Privates Hilfsprogramm, nicht offiziell. Kein Angebot der Handelskammer Bremen (IHK) und ohne Verbindung zu Ausbildungsbetrieben.';
 
-  let S = { user: null, settings: null, setup: false };
+  let S = { user: null, settings: null, setup: false, missing: [] };
+  const isAdmin = () => S.user && S.user.role === 'admin';
+  const locked = (k) => !!(S.settings && S.settings.gesperrt && S.settings.gesperrt[k]);
 
   /* ---------- Hilfen ---------- */
   async function api(method, url, body) {
@@ -31,27 +34,67 @@
   const today = () => { const d = new Date(); return fmt(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))); };
   const de = (s) => s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : '';
   const deShort = (s) => s.slice(8, 10) + '.' + s.slice(5, 7) + '.';
-  const deTime = (iso) => iso ? new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '';
+  const deDate = (iso) => iso ? de(new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })) : '–';
+  function ago(iso) {
+    if (!iso) return 'noch nie';
+    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (m < 2) return 'gerade eben';
+    if (m < 60) return `vor ${m} Minuten`;
+    const h = Math.round(m / 60); if (h < 24) return `vor ${h} Stunde${h === 1 ? '' : 'n'}`;
+    const d = Math.round(h / 24); if (d < 31) return `vor ${d} Tag${d === 1 ? '' : 'en'}`;
+    return 'am ' + deDate(iso);
+  }
+  function since(iso) {
+    if (!iso) return '–';
+    const days = Math.floor((Date.now() - new Date(iso).getTime()) / 864e5);
+    const txt = days < 1 ? 'seit heute' : days < 60 ? `seit ${days} Tag${days === 1 ? '' : 'en'}` : `seit ${Math.round(days / 30)} Monaten`;
+    return `${txt} (${deDate(iso)})`;
+  }
 
   let toastTimer;
   function toast(msg) {
     const t = $('#toast'); t.textContent = msg; t.hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3500);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3800);
   }
+  /* Dialog: Knoepfe mit data-m schliessen ihn, data-m="form" gibt die Formularfelder zurueck */
   function modal(html, onOpen) {
     $('#modal-box').innerHTML = html; $('#modal').hidden = false;
     return new Promise((resolve) => {
       const done = (v) => { $('#modal').hidden = true; $('#modal-box').innerHTML = ''; resolve(v); };
-      $('#modal-box').onclick = (e) => { const b = e.target.closest('[data-m]'); if (b) { e.preventDefault(); done(b.dataset.m === 'form' ? Object.fromEntries(new FormData($('#modal-box form'))) : b.dataset.m); } };
+      $('#modal-box').onclick = (e) => {
+        const b = e.target.closest('[data-m]'); if (!b) return;
+        e.preventDefault();
+        if (b.dataset.m === 'form') { const f = $('#modal-box form'); if (!f.reportValidity()) return; done(Object.fromEntries(new FormData(f))); }
+        else done(b.dataset.m);
+      };
+      const f = $('#modal-box form'); if (f) f.onsubmit = (e) => { e.preventDefault(); const b = $('[data-m=form]', f); if (b) b.click(); };
       $('#modal').onclick = (e) => { if (e.target.id === 'modal') done(null); };
-      if (onOpen) onOpen($('#modal-box'));
+      if (onOpen) onOpen($('#modal-box'), done);
     });
   }
-  const errBox = (el, msg, kind = 'err') => { if (el) { el.innerHTML = msg ? `<div class="msg ${kind}">${esc(msg)}</div>` : ''; } };
-  async function busy(btn, fn) {
-    if (btn) btn.disabled = true;
-    try { return await fn(); } finally { if (btn) btn.disabled = false; }
+  const errBox = (el, msg, kind = 'err') => { if (el) el.innerHTML = msg ? `<div class="msg ${kind}">${esc(msg)}</div>` : ''; };
+  async function busy(btn, fn) { if (btn) btn.disabled = true; try { return await fn(); } finally { if (btn) btn.disabled = false; } }
+  async function copy(t) {
+    try { await navigator.clipboard.writeText(t); toast('Kopiert.'); }
+    catch { toast('Kopieren geht hier nicht. Bitte markieren und von Hand kopieren.'); }
   }
+  const lockNote = (k) => locked(k) ? `<div class="msg warn">${esc(S.settings.funktionen[k])}: ${esc(S.settings.sperrText)}</div>` : '';
+
+  /* ---------- Hell / Dunkel ---------- */
+  function themeNow() { try { return localStorage.getItem('bh-theme') || 'auto'; } catch { return 'auto'; } }
+  function setTheme(t) {
+    try { if (t === 'auto') localStorage.removeItem('bh-theme'); else localStorage.setItem('bh-theme', t); } catch {}
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+    const ICONS = {
+      light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>',
+      dark: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>',
+      auto: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg>'
+    };
+    $('#themebtn').innerHTML = ICONS[t];
+    $('#themebtn').title = t === 'dark' ? 'Dunkel (tippen für Automatisch)' : t === 'light' ? 'Hell (tippen für Dunkel)' : 'Automatisch (tippen für Hell)';
+  }
+  $('#themebtn').onclick = () => { const t = themeNow(); setTheme(t === 'auto' ? 'light' : t === 'light' ? 'dark' : 'auto'); toast(themeNow() === 'auto' ? 'Hell/Dunkel wie am Gerät' : themeNow() === 'dark' ? 'Dunkler Modus' : 'Heller Modus'); };
+  setTheme(themeNow());
 
   /* ---------- Speicherort (PC: fester Ordner, Handy: Teilen) ---------- */
   const IDB = {
@@ -64,10 +107,8 @@
 
   async function savePdf(r) {
     const res = await fetch('/api/pdf?id=' + encodeURIComponent(r.id), { credentials: 'same-origin' });
-    if (!res.ok) return toast('PDF konnte nicht erstellt werden.');
-    const blob = await res.blob();
-    const name = r.file;
-    /* 1. Fester Ordner (Chrome/Edge am PC) */
+    if (!res.ok) { let m = 'PDF konnte nicht erstellt werden.'; try { m = (await res.json()).error || m; } catch {} return toast(m); }
+    const blob = await res.blob(), name = r.file;
     const dir = canPickFolder() ? await IDB.get('dir') : null;
     if (dir) {
       try {
@@ -80,28 +121,27 @@
         }
       } catch (e) { console.warn(e); }
     }
-    /* 2. Handy: Teilen-Menue, dort "In Dateien sichern" und Ordner waehlen */
     const file = new File([blob], name, { type: 'application/pdf' });
     if (navigator.canShare && navigator.canShare({ files: [file] }) && matchMedia('(pointer: coarse)').matches) {
       try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
     }
-    /* 3. Normaler Download */
     const url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Heruntergeladen: ' + name);
   }
 
   /* ---------- Navigation ---------- */
   function nav() {
-    const top = $('#top');
-    if (!S.user || S.user.mustChange) { top.hidden = !S.user; $('#nav').innerHTML = ''; return; }
-    top.hidden = false;
+    const ready = S.user && !S.user.mustChange && !S.missing.length;
+    if (!ready) { $('#nav').innerHTML = ''; return; }
     const r = location.hash.split('/')[1] || '';
-    const on = (k) => (k === 'berichte' ? (r === '' || r === 'bericht') : r === k);
-    const items = [['berichte', '▤', 'Berichte', '#/'], ['einstellungen', '⚙', 'Einstellungen', '#/einstellungen']];
-    if (S.user.role === 'admin') items.push(['admin', '★', 'Admin', '#/admin']);
-    $('#nav').innerHTML = items.map(([k, ic, t, h]) => `<a href="${h}" class="${on(k) ? 'on' : ''}"><span class="ic">${ic}</span>${t}</a>`).join('') +
-      `<a href="#" data-logout><span class="ic">⏻</span>Abmelden</a>`;
+    const items = isAdmin()
+      ? [['admin', '★', 'Konten', '#/admin'], ['einstellungen', '⚙', 'Konto', '#/einstellungen']]
+      : [['', '▤', 'Berichte', '#/'], ['einstellungen', '⚙', 'Einstellungen', '#/einstellungen']];
+    const on = (k) => (k === '' ? (r === '' || r === 'bericht') : r === k);
+    $('#nav').innerHTML = items.map(([k, ic, t, h]) => `<a href="${h}" class="${on(k) ? 'on' : ''}"><span class="ic">${ic}</span>${t}</a>`).join('')
+      + '<a href="#" data-logout><span class="ic">⏻</span>Abmelden</a>';
   }
   document.addEventListener('click', async (e) => {
     if (!e.target.closest('[data-logout]')) return;
@@ -113,7 +153,7 @@
 
   async function boot() {
     try { S = { ...S, ...(await api('GET', '/api/state')) }; }
-    catch { app.innerHTML = '<div class="card narrow"><div class="msg err">Server nicht erreichbar.</div></div>'; return; }
+    catch { app.innerHTML = '<div class="card narrow"><div class="msg err">Der Server ist gerade nicht erreichbar. Bitte später neu laden.</div></div>'; return; }
     render();
   }
   window.addEventListener('hashchange', async () => { await flushSave(); render(); });
@@ -122,108 +162,205 @@
     app.oninput = app.onchange = app.onclick = app.onfocusout = null;
     nav();
     window.scrollTo(0, 0);
+    const [, r, a, b] = location.hash.split('/');
+    if (r === 'hilfe') return viewHelp();
     if (S.setup) return viewSetup();
     if (!S.user) return viewLogin();
     if (S.user.mustChange) return viewForcePw();
-    const [, r, a, b] = location.hash.split('/');
-    if (r === 'bericht' && a) return viewReport(a);
+    if (S.missing.length) return viewProfileFirst();
     if (r === 'einstellungen') return viewSettings();
-    if (r === 'admin' && S.user.role === 'admin') return viewAdmin(a || 'konten', b);
-    return viewHome();
+    if (isAdmin()) return viewAdmin(r === 'admin' && a ? a : 'konten');
+    if (r === 'bericht' && a) return viewReport(a);
+    viewHome();
+    if (!S.user.tutorialDone) setTimeout(() => tutorial(), 300);
   }
 
-  /* ---------- Einrichtung / Anmeldung ---------- */
+  /* ---------- Einrichtung / Anmeldung / erster Start ---------- */
   function viewSetup() {
     app.innerHTML = `<div class="card narrow">
       <h1>Ersteinrichtung</h1>
-      <p class="muted">Lege das Admin-Konto an. Den Einrichtungs-Code zeigt das Einrichtungsskript an. Er steht auch auf dem Server in <code>/var/lib/berichtsheft/secret/setup-code.txt</code>.</p>
+      <p class="muted">Hier legst du den <strong>Admin-Zugang</strong> an. Er ist nur zum Verwalten da. Dein persönliches Berichtsheft legst du danach als eigenes Konto an.</p>
       <form id="f">
-        <label>Einrichtungs-Code</label><input type="text" name="code" autocomplete="off" required>
-        <div class="grid"><div><label>Vorname</label><input type="text" name="vorname" required></div><div><label>Nachname</label><input type="text" name="nachname" required></div></div>
-        <label>Benutzername</label><input type="text" name="username" autocomplete="username" autocapitalize="none" required>
-        <label>Passwort (mindestens 10 Zeichen)</label><input type="password" name="password" autocomplete="new-password" required minlength="10">
+        <label>Einrichtungs-Code</label><input type="text" name="code" autocomplete="off" autocapitalize="characters" required>
+        <div class="hint">Zeigt das Einrichtungsskript am Ende an. Steht auch auf dem Server in <code>/var/lib/berichtsheft/secret/setup-code.txt</code>.</div>
+        <label>Benutzername für den Admin</label><input type="text" name="username" autocomplete="username" autocapitalize="none" required placeholder="z. B. admin">
+        <label>Passwort (mindestens 8 Zeichen)</label><input type="password" name="password" autocomplete="new-password" required minlength="8">
         <div id="err"></div>
         <div class="actions"><button class="primary">Admin anlegen</button></div>
       </form></div>`;
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
-      try { await api('POST', '/api/setup', Object.fromEntries(new FormData(e.target))); location.hash = '#/einstellungen'; await boot(); }
+      try { await api('POST', '/api/setup', Object.fromEntries(new FormData(e.target))); location.hash = '#/admin'; await boot(); }
       catch (x) { errBox($('#err'), x.message); }
     };
   }
   function viewLogin() {
     app.innerHTML = `<div class="card narrow">
-      <h1>Anmelden</h1><p class="muted">Digitaler Ausbildungsnachweis</p>
+      <div class="lead"><img src="/icon.svg" width="44" height="44" alt=""><div><h1>Anmelden</h1><p class="muted">Dein digitales Berichtsheft</p></div></div>
       <form id="f">
         <label>Benutzername</label><input type="text" name="username" autocomplete="username" autocapitalize="none" required>
         <label>Passwort</label><input type="password" name="password" autocomplete="current-password" required>
         <div id="err"></div>
         <div class="actions"><button class="primary">Anmelden</button></div>
-      </form></div>`;
+      </form>
+      <p class="muted mt2"><strong>Neu hier?</strong> Benutzername und Startpasswort bekommst du vom Admin.<br><strong>Passwort vergessen?</strong> Der Admin kann dir ein neues Startpasswort geben.</p>
+      <p class="muted small-t">${esc(HINWEIS)}</p></div>`;
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       await busy($('button', e.target), async () => {
-        try { await api('POST', '/api/login', Object.fromEntries(new FormData(e.target))); await boot(); }
+        try { await api('POST', '/api/login', Object.fromEntries(new FormData(e.target))); location.hash = ''; await boot(); }
         catch (x) { errBox($('#err'), x.message); }
       });
     };
   }
-  function pwForm(title, hint) {
+  function pwForm(title, hint, oldLabel = 'Bisheriges Passwort') {
     return `<form id="pwf"><h2>${title}</h2>${hint ? `<p class="muted">${hint}</p>` : ''}
-      <label>Bisheriges Passwort</label><input type="password" name="old" autocomplete="current-password" required>
-      <label>Neues Passwort (mindestens 10 Zeichen)</label><input type="password" name="new" autocomplete="new-password" minlength="10" required>
-      <label>Neues Passwort wiederholen</label><input type="password" name="new2" autocomplete="new-password" minlength="10" required>
-      <div id="pwerr"></div><div class="actions"><button class="primary">Passwort ändern</button></div></form>`;
+      <label>${oldLabel}</label><input type="password" name="old" autocomplete="current-password" required>
+      <label>Neues Passwort (mindestens 8 Zeichen)</label><input type="password" name="new" autocomplete="new-password" minlength="8" required>
+      <label>Neues Passwort wiederholen</label><input type="password" name="new2" autocomplete="new-password" minlength="8" required>
+      <div id="pwerr"></div><div class="actions"><button class="primary">Passwort speichern</button></div></form>`;
   }
   function bindPw(after) {
     $('#pwf').onsubmit = async (e) => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
-      if (f.new !== f.new2) return errBox($('#pwerr'), 'Die neuen Passwörter stimmen nicht überein.');
+      if (f.new !== f.new2) return errBox($('#pwerr'), 'Die beiden neuen Passwörter sind nicht gleich.');
       try { await api('POST', '/api/password', f); e.target.reset(); after(); }
       catch (x) { errBox($('#pwerr'), x.message); }
     };
   }
   function viewForcePw() {
-    app.innerHTML = `<div class="card narrow">${pwForm('Eigenes Passwort festlegen', 'Du hast ein vorläufiges Passwort bekommen. Bitte lege jetzt dein eigenes fest.')}</div>`;
-    bindPw(async () => { toast('Passwort geändert.'); location.hash = '#/einstellungen'; await boot(); });
+    app.innerHTML = `<div class="card narrow"><p class="chip brand">Schritt 1 von ${isAdmin() ? 1 : 2}</p>
+      ${pwForm('Eigenes Passwort festlegen', 'Du hast dich mit dem Startpasswort angemeldet. Lege jetzt ein eigenes Passwort fest, das nur du kennst.', 'Startpasswort')}</div>`;
+    bindPw(async () => { toast('Passwort gespeichert.'); await boot(); });
+  }
+  function viewProfileFirst() {
+    const u = S.user;
+    app.innerHTML = `<div class="card narrow"><p class="chip brand">Schritt 2 von 2</p><h2>Deine Angaben</h2>
+      <p class="muted">Diese Angaben kommen automatisch in jeden Bericht. Du kannst sie später in den Einstellungen ändern.</p>
+      <form id="f">${profileFields(u)}<div id="err"></div><div class="actions"><button class="primary">Weiter</button></div></form></div>`;
+    $('#f').onsubmit = async (e) => {
+      e.preventDefault();
+      try { const r = await api('POST', '/api/me', Object.fromEntries(new FormData(e.target))); S.user = r.user; S.missing = r.missing; location.hash = ''; render(); }
+      catch (x) { errBox($('#err'), x.message); }
+    };
+  }
+  function profileFields(u) {
+    return `<div class="grid"><div><label>Vorname <span class="req">*</span></label><input type="text" name="vorname" value="${esc(u.vorname)}" required></div>
+      <div><label>Nachname <span class="req">*</span></label><input type="text" name="nachname" value="${esc(u.nachname)}" required></div></div>
+      <label>Firma <span class="req">*</span></label><input type="text" name="firma" value="${esc(u.firma)}" required placeholder="Name deines Ausbildungsbetriebs">
+      <label>Standort deines Arbeitsplatzes <span class="req">*</span></label><input type="text" name="standort" value="${esc(u.standort)}" required placeholder="z. B. Bremen-Hemelingen">
+      <label>Lehrjahr <span class="req">*</span></label><select name="lehrjahr" required>${['', 1, 2, 3, 4].map((n) => `<option value="${n}" ${String(n) === String(u.lehrjahr) ? 'selected' : ''}>${n ? n + '. Lehrjahr' : 'Bitte wählen'}</option>`).join('')}</select>`;
   }
 
-  /* ---------- Startseite: neuer Bericht + letzte Berichte ---------- */
+  /* ---------- Einfuehrung ---------- */
+  const TOUR = [
+    ['👋', 'Willkommen', `Hier schreibst du dein wöchentliches Berichtsheft und bekommst am Ende ein fertiges, unterschriebenes PDF.<br><br><span class="muted">${HINWEIS}</span>`],
+    ['⚙', 'Einmal einrichten', 'Unter <strong>Einstellungen</strong> hinterlegst du einmal deine <strong>Unterschrift</strong> und deine <strong>Arbeitsorte</strong> (z. B. „Hof“, Adresse, Ausbilder). Die kannst du später mit einem Tipp in den Text einfügen.'],
+    ['＋', 'Neuer Wochenbericht', 'Tippe auf <strong>Neuer Wochenbericht</strong> und wähle <strong>Diese Woche</strong> oder ein Datum. Die Woche geht immer von Montag bis Sonntag, die Nummer zählt automatisch weiter.'],
+    ['✎', 'Tage ausfüllen', 'Schreib zu jedem Tag, was du gemacht hast. Alles wird <strong>automatisch gespeichert</strong>, du kannst also jeden Tag ein Stück machen. Unter jedem Feld findest du <strong>Einfügen</strong>, <strong>Ideen</strong> und <strong>Rückgängig</strong>.'],
+    ['✓', 'Rechtschreibung', 'Fehler werden unter dem Tag angezeigt. Tippe auf den grünen Vorschlag, auf „So lassen“ oder nimm Fachwörter ins Wörterbuch auf.'],
+    ['✍', 'Unterschreiben & speichern', 'Unten das Datum wählen und <strong>Prüfen & unterschreiben</strong> tippen. Danach <strong>PDF speichern</strong>. Du kannst am Handy schreiben und später z. B. am Tablet in der Firma herunterladen. 3 Monate lang kannst du noch etwas ändern.'],
+    ['?', 'Hilfe', 'Oben rechts über <strong>?</strong> findest du jederzeit die Anleitung. Mit <strong>◐</strong> schaltest du zwischen hell und dunkel um.']
+  ];
+  async function tutorial(fromHelp) {
+    let i = 0;
+    const draw = (box, done) => {
+      const [ico, title, body] = TOUR[i];
+      box.innerHTML = `<div class="tour"><div class="big-ico">${ico}</div><h2>${title}</h2><p>${body}</p>
+        <div class="dots">${TOUR.map((_, k) => `<span class="${k === i ? 'on' : ''}"></span>`).join('')}</div>
+        <div class="actions"><button class="ghost" data-t="skip">${i === TOUR.length - 1 ? '' : 'Überspringen'}</button>
+        <div class="row">${i ? '<button data-t="back">Zurück</button>' : ''}<button class="primary" data-t="next">${i === TOUR.length - 1 ? 'Los geht’s' : 'Weiter'}</button></div></div></div>`;
+      box.onclick = (e) => {
+        const b = e.target.closest('[data-t]'); if (!b) return;
+        if (b.dataset.t === 'back') { i--; draw(box, done); }
+        else if (b.dataset.t === 'next' && i < TOUR.length - 1) { i++; draw(box, done); }
+        else done('end');
+      };
+    };
+    await modal('', (box, done) => draw(box, done));
+    if (!fromHelp && S.user && !S.user.tutorialDone) {
+      try { S.user = (await api('POST', '/api/me', { tutorialDone: true })).user; } catch {}
+    }
+  }
+
+  /* ---------- Hilfe ---------- */
+  function viewHelp() {
+    const q = (t, b, open) => `<details ${open ? 'open' : ''}><summary>${t}</summary><div>${b}</div></details>`;
+    app.innerHTML = `<div class="toprow"><a href="#/" class="back">‹ Zurück</a></div><h1>Anleitung</h1><p class="muted">Kurz erklärt, Schritt für Schritt.</p>
+      ${S.user && !isAdmin() ? '<div class="actions"><button class="primary" id="tourbtn">Einführung noch einmal ansehen</button></div><div class="mt"></div>' : ''}
+      ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Vorname, Nachname, Firma, Standort und Lehrjahr eintragen.</li></ol>', true)}
+      ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
+      ${q('Neuen Wochenbericht anlegen', '<ol><li>Auf der Startseite <strong>Neuer Wochenbericht</strong> tippen.</li><li><strong>Diese Woche</strong> oder <strong>Nächste Woche</strong> wählen, oder ein beliebiges Datum. Die Woche wird automatisch auf Montag bis Sonntag gesetzt.</li><li>Die Nummer zählt von selbst weiter. Nur ändern, wenn sie nicht stimmt.</li><li>Ausbildungsbereich wählen, z. B. AW, BBS oder Betrieb.</li></ol>')}
+      ${q('Tage ausfüllen', '<ul><li>Alles wird beim Schreiben gespeichert. Du kannst den Bericht jederzeit schließen und später weitermachen, auch auf einem anderen Gerät.</li><li><strong>Einfügen:</strong> setzt einen Arbeitsort oder Textbaustein an der Stelle ein, wo der Cursor steht.</li><li><strong>Markiertes merken:</strong> Text im Feld markieren und tippen. Er wird ein Textbaustein für später.</li><li><strong>Ideen:</strong> Vorschläge aus deinen früheren Berichten und den anderen Tagen der Woche. Einfügen oder kopieren, danach selbst anpassen.</li><li><strong>Rückgängig:</strong> macht das letzte Einfügen, die letzte Idee oder Korrektur wieder rückgängig.</li><li>Über das kleine Auswahlfeld beim Tag stellst du Urlaub, Krank, Feiertag oder Berufsschule ein.</li></ul>')}
+      ${q('Rechtschreibung', '<ul><li>Wird beim Schreiben automatisch geprüft.</li><li>Grüner Knopf = Vorschlag übernehmen. „So lassen“ = Hinweis ausblenden.</li><li>Fachwörter mit „Ins Wörterbuch“ speichern, dann werden sie nicht mehr angestrichen.</li></ul>')}
+      ${q('Unterschreiben und PDF speichern', '<ol><li>Unter dem Formular das Datum wählen (heute oder ein anderes).</li><li><strong>Prüfen & unterschreiben</strong> tippen. Es wird noch einmal alles geprüft.</li><li><strong>PDF speichern</strong> tippen. Am iPhone „In Dateien sichern“ wählen, am PC mit Chrome/Edge kannst du einen festen Ordner einstellen.</li></ol>')}
+      ${q('Später etwas ändern', 'Nach dem Unterschreiben kannst du einen Bericht noch 3 Monate lang über <strong>Nachträglich bearbeiten</strong> ändern. Danach musst du neu unterschreiben, im PDF steht dann klein „korrigiert“.')}
+      ${q('Passwort vergessen?', 'Melde dich beim Admin. Er kann dir ein neues Startpasswort geben. Damit meldest du dich an und legst wieder ein eigenes fest.')}
+      ${q('Als App auf den Startbildschirm', '<ul><li><strong>iPhone (Safari):</strong> Teilen-Symbol → „Zum Home-Bildschirm“.</li><li><strong>Android (Chrome):</strong> Menü ⋮ → „Zum Startbildschirm hinzufügen“.</li></ul>')}
+      <p class="muted mt2">${esc(HINWEIS)}</p>`;
+    const t = $('#tourbtn'); if (t) t.onclick = () => tutorial(true);
+  }
+
+  /* ---------- Startseite ---------- */
   function statusChip(r) {
     if (r.status === 'abgeschlossen') return r.editable ? '<span class="chip ok">Unterschrieben</span>' : '<span class="chip">Archiviert</span>';
     return '<span class="chip warn">In Arbeit</span>';
   }
   async function viewHome() {
     app.innerHTML = '<p class="loading">Lädt …</p>';
-    const [{ reports }, next] = await Promise.all([api('GET', '/api/reports'), api('GET', '/api/report/next')]);
-    let html = '';
-    if (next.missing.length) html += `<div class="msg warn">Bitte zuerst in den <a href="#/einstellungen">Einstellungen</a> Vorname, Nachname und Ausbildungsbeginn eintragen.</div>`;
-    else if (!next.hasSignature) html += `<div class="msg warn">Noch keine Unterschrift hinterlegt. Das geht in den <a href="#/einstellungen">Einstellungen</a>.</div>`;
-    html += `<button class="primary big" id="newbtn" ${next.missing.length ? 'disabled' : ''}><span class="plus">+</span> Neuer Wochenbericht</button>
+    let reports, next;
+    try { let st; [{ reports }, next, st] = await Promise.all([api('GET', '/api/reports'), api('GET', '/api/report/next'), api('GET', '/api/state')]); S = { ...S, ...st }; }
+    catch (x) { app.innerHTML = `<div class="msg err">${esc(x.message)}</div>`; return; }
+    const sperren = Object.keys(S.settings.funktionen).filter(locked);
+    let html = `<p class="hello"><strong>Hallo ${esc(S.user.vorname)}!</strong> <span class="muted">${esc(S.user.firma)} · ${esc(S.user.standort)}</span></p>`;
+    if (sperren.length) html += `<div class="msg warn">Gerade gesperrt: ${sperren.map((k) => esc(S.settings.funktionen[k])).join(', ')}. ${esc(S.settings.sperrText)}</div>`;
+    if (!next.hasSignature) html += `<div class="msg info">✍ Noch keine Unterschrift hinterlegt. Das geht in den <a href="#/einstellungen">Einstellungen</a>.</div>`;
+    html += `<button class="primary big" id="newbtn" ${locked('neu') ? 'disabled' : ''}><span class="plus">+</span> Neuer Wochenbericht</button>
       <h2 class="mt2">Meine Berichte</h2>
       <div class="list">${reports.map((r) => `<a class="item link" href="#/bericht/${esc(r.id)}">
         <div class="nr">${r.nr}</div>
         <div class="main"><strong>KW ${r.kw} · ${deShort(r.weekStart)} – ${de(r.bis)}</strong>
-        <span class="muted">${esc(r.bereich || '–')}${r.status === 'abgeschlossen' ? ' · unterschrieben ' + de(r.signedAt.slice(0, 10)) : ''}</span></div>
+        <span class="muted">${esc(r.bereich || '–')}${r.status === 'abgeschlossen' ? ' · unterschrieben ' + deDate(r.signedAt) : ` · ${r.filled} von ${r.total} Tagen ausgefüllt`}</span>
+        ${r.status === 'abgeschlossen' ? '' : `<div class="progress"><span data-p="${Math.round(100 * r.filled / Math.max(1, r.total))}"></span></div>`}</div>
         ${statusChip(r)}</a>`).join('') || '<div class="card muted">Noch keine Berichte. Tippe oben auf „Neuer Wochenbericht“.</div>'}</div>`;
     app.innerHTML = html;
+    /* Fortschrittsbalken per Skript setzen (Inline-Styles sind aus Sicherheitsgruenden gesperrt) */
+    $$('.progress span').forEach((el) => { el.style.width = el.dataset.p + '%'; });
     const btn = $('#newbtn'); if (btn) btn.onclick = () => newReport(next);
   }
 
+  function bereichListe(extra) {
+    const fromOrte = (S.user.orte || []).map((o) => o.label).filter(Boolean);
+    return [...new Set([...(S.settings.bereiche || []), ...fromOrte, extra].filter(Boolean))];
+  }
+
   async function newReport(next) {
-    const bereiche = S.settings.bereiche || [];
+    const nextWeek = addDays(next.thisWeek, 7);
+    let chosen = next.weekStart;
     const res = await modal(`<form><h2>Neuer Wochenbericht</h2>
-      <label>Woche (ein beliebiger Tag der Woche)</label><input type="date" name="weekStart" value="${next.weekStart}" required>
-      <p class="muted" id="wk"></p>
+      <label>Welche Woche?</label>
+      <div class="weekpick"><button type="button" data-w="${next.thisWeek}">Diese Woche</button><button type="button" data-w="${nextWeek}">Nächste Woche</button></div>
+      <label>… oder ein Datum aus der Woche</label><input type="date" id="wdate" value="${chosen}">
+      <div class="range" id="range"></div><div id="taken"></div>
+      <input type="hidden" name="weekStart" value="${chosen}">
       <label>Nummer</label><input type="number" name="nr" min="1" max="9999" value="${next.nr}" required>
-      <p class="muted">Wird automatisch fortlaufend vergeben. Nur ändern, wenn es nötig ist.</p>
-      <label>Ausbildungsbereich</label><select name="bereich">${bereiche.map((b) => `<option ${b === next.bereich ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>
+      <div class="hint">Zählt automatisch weiter. Nur ändern, wenn sie nicht stimmt.</div>
+      <label>Ausbildungsbereich</label><select name="bereich">${bereichListe(next.bereich).map((b) => `<option ${b === next.bereich ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>
+      <div class="hint">Eigene Bereiche legst du unter Einstellungen → Arbeitsorte an.</div>
       <div class="actions"><button class="primary" data-m="form">Bericht anlegen</button><button type="button" data-m="cancel">Abbrechen</button></div></form>`,
     (box) => {
-      const inp = $('input[name=weekStart]', box), wk = $('#wk', box);
-      const upd = () => { if (inp.value) { const m = monday(inp.value); wk.textContent = `Woche vom ${de(m)} bis ${de(addDays(m, 6))}`; } };
-      inp.oninput = upd; upd();
+      const upd = (d) => {
+        chosen = monday(d);
+        $('input[name=weekStart]', box).value = chosen;
+        $('#wdate', box).value = d;
+        $('#range', box).textContent = `Montag ${de(chosen)} bis Sonntag ${de(addDays(chosen, 6))}`;
+        $$('[data-w]', box).forEach((b) => b.classList.toggle('on', b.dataset.w === chosen));
+        $('#taken', box).innerHTML = next.taken.includes(chosen) ? '<div class="msg info">Für diese Woche gibt es schon einen Bericht. Er wird geöffnet.</div>' : '';
+      };
+      $$('[data-w]', box).forEach((b) => { b.onclick = () => upd(b.dataset.w); });
+      $('#wdate', box).onchange = (e) => { if (e.target.value) upd(e.target.value); };
+      upd(chosen);
     });
     if (!res || typeof res !== 'object') return;
     try {
@@ -234,14 +371,14 @@
   }
 
   /* ---------- Bericht (sieht aus wie das Formular) ---------- */
-  const R = { id: null, rep: null, dirty: false, saveTimer: null, saving: null, checks: {}, checkTimers: {}, ignored: new Set() };
-  const editable = () => R.rep && R.rep.status !== 'abgeschlossen';
+  const R = { id: null, rep: null, dirty: false, saveTimer: null, saving: null, checks: {}, checkTimers: {}, ignored: new Set(), undo: {}, panel: {} };
+  const editable = () => R.rep && R.rep.status !== 'abgeschlossen' && !locked('bearbeiten');
   function fillText(type, hol) { return ((S.settings.vorbelegung || {})[type] || '').replace(/\{name\}/g, hol || ''); }
 
   async function viewReport(id) {
-    R.id = id; R.checks = {}; R.dirty = false;
+    R.id = id; R.checks = {}; R.dirty = false; R.undo = {}; R.panel = {};
     app.innerHTML = '<p class="loading">Lädt …</p>';
-    try { R.rep = (await api('GET', '/api/report?id=' + encodeURIComponent(id))).report; }
+    try { const [rr, st] = await Promise.all([api('GET', '/api/report?id=' + encodeURIComponent(id)), api('GET', '/api/state')]); R.rep = rr.report; S = { ...S, ...st }; }
     catch (x) { app.innerHTML = `<div class="msg err">${esc(x.message)}</div><a href="#/">Zurück</a>`; return; }
     if (R.id !== id) return;
     drawReport();
@@ -250,37 +387,38 @@
 
   function drawReport() {
     const r = R.rep, ed = editable(), u = S.user;
-    const bereiche = [...new Set([...(S.settings.bereiche || []), r.bereich].filter(Boolean))];
-    let html = `<div class="toprow"><a href="#/" class="back">‹ Berichte</a><span class="spacer"></span>${statusChip(r)}</div>`;
+    let html = `<div class="toprow"><a href="#/" class="back">‹ Meine Berichte</a><span class="spacer"></span>${statusChip(r)}</div>`;
+    html += lockNote('bearbeiten');
     if (r.status === 'abgeschlossen') {
-      html += `<div class="card done"><p><strong>Unterschrieben</strong> mit Datum ${de(r.sigDate)}${r.korrigiertAm ? ' (korrigiert)' : ''}</p>
-        <p class="muted fname">${esc(r.file)}</p>
-        <div class="actions"><button class="primary" data-act="save">PDF speichern</button><a class="btn" href="/api/pdf?id=${esc(r.id)}&view=1" target="_blank" rel="noopener">Ansehen</a>
-        ${r.editable ? '<button data-act="reopen">Nachträglich bearbeiten</button>' : ''}</div>
-        <p class="muted">${r.editable ? `Noch bearbeitbar bis ${de(r.deadline.slice(0, 10))}.` : 'Die Bearbeitungsfrist ist abgelaufen. Nur der Admin kann sie verlängern.'}</p></div>`;
+      html += `<div class="card done"><p><strong>✓ Unterschrieben</strong> mit Datum ${de(r.sigDate)}${r.korrigiertAm ? ' (korrigiert)' : ''}</p>
+        <p class="muted fname">${esc(r.file)}</p>${lockNote('pdf')}
+        <div class="actions"><button class="primary" data-act="save" ${locked('pdf') ? 'disabled' : ''}>PDF speichern</button>
+        <a class="btn ${locked('pdf') ? 'disabled' : ''}" href="/api/pdf?id=${esc(r.id)}&view=1" target="_blank" rel="noopener">Ansehen</a>
+        ${r.editable ? `<button data-act="reopen" ${locked('bearbeiten') ? 'disabled' : ''}>Nachträglich bearbeiten</button>` : ''}</div>
+        <p class="muted">${r.editable ? `Noch bearbeitbar bis ${de(r.deadline.slice(0, 10))}.` : 'Die Bearbeitungsfrist ist abgelaufen.'}</p></div>`;
     }
     html += `<div class="sheet">
       <div class="sheet-head"><div><div class="sheet-title">Ausbildungsnachweis (Berichtsheft)</div><div class="muted">täglich · KW ${r.kw}/${r.jahr}</div></div>
-        <label class="nrbox">Nr.${ed ? `<input type="number" min="1" max="9999" data-f="nr" value="${r.nr}">` : `<b>${r.nr}</b>`}</label></div>
+        <label class="nrbox">Nr.${ed ? `<input type="number" min="1" max="9999" data-f="nr" value="${r.nr}" aria-label="Nummer">` : `<b>${r.nr}</b>`}</label></div>
       <table class="hdr"><tbody>
         <tr><th>Name des/der Auszubildenden</th><td colspan="3">${esc(u.vorname)} ${esc(u.nachname)}</td></tr>
-        <tr><th>Ausbildungsjahr</th><td>${r.ausbildungsjahr}</td><th>Ausbildungs&shy;bereich</th>
-          <td>${ed ? `<select data-f="bereich">${bereiche.map((b) => `<option ${b === r.bereich ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` : esc(r.bereich)}</td></tr>
+        <tr><th>Ausbildungsjahr</th><td>${ed ? `<select data-f="ausbildungsjahr">${[1, 2, 3, 4].map((n) => `<option ${n === Number(r.ausbildungsjahr) ? 'selected' : ''}>${n}</option>`).join('')}</select>` : r.ausbildungsjahr}</td>
+          <th>Ausbildungs&shy;bereich</th><td>${ed ? `<select data-f="bereich">${bereichListe(r.bereich).map((b) => `<option ${b === r.bereich ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` : esc(r.bereich)}</td></tr>
         <tr><th>Ausbildungswoche vom</th><td>${de(r.weekStart)}</td><th>bis</th><td>${de(r.bis)}</td></tr>
       </tbody></table>
       <div class="days"><div class="dhead"><span></span><span>Betriebliche Tätigkeiten, Unterweisungen, Unterricht, Themen der Berufsschule</span><span>Std.</span></div>
       ${r.days.map((d, i) => dayRow(d, i, ed)).join('')}</div>`;
     if (ed) {
-      html += `<div class="sigrow"><div><label>Datum</label><input type="date" id="sigdate" value="${today()}" max="${today()}"></div>
+      html += `<div class="sigrow"><div><label for="sigdate">Datum</label><input type="date" id="sigdate" value="${today()}" max="${today()}"></div>
         <div class="sigprev">${u.hasSignature ? `<img src="/api/me/signature?t=${Date.now()}" alt="Unterschrift">` : '<a href="#/einstellungen">Unterschrift hinterlegen</a>'}</div>
         <div class="siglabel muted">Datum, Unterschrift Auszubildende/r</div></div>`;
     }
     html += '</div>';
     if (ed) {
-      html += `<div class="card actionsbar"><span class="savestate" id="savestate">Gespeichert ✓</span><span class="spacer"></span>
+      html += `<div class="card actionsbar"><span class="savestate" id="savestate">✓ Gespeichert</span><span class="spacer"></span>
         ${r.firstSignedAt ? '' : '<button class="small danger" data-act="delete">Löschen</button>'}
         <a class="btn" href="/api/pdf?id=${esc(r.id)}&view=1" target="_blank" rel="noopener">Vorschau</a>
-        <button class="primary" data-act="finish">Prüfen & unterschreiben</button><div id="finerr" class="full"></div></div>`;
+        <button class="primary" data-act="finish" ${locked('unterschreiben') ? 'disabled' : ''}>Prüfen & unterschreiben</button><div id="finerr" class="full">${lockNote('unterschreiben')}</div></div>`;
     }
     app.innerHTML = html;
     bindReport();
@@ -295,7 +433,13 @@
       <div class="dtext">
         <div class="dmeta"><b>${deShort(d.date)}</b>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}
           ${ed ? `<select data-i="${i}" data-k="type" aria-label="Art des Tages">${Object.entries(types).map(([k, t]) => `<option value="${k}" ${k === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select>` : `<span class="muted">${types[d.type]}</span>`}</div>
-        ${ed ? `<textarea data-i="${i}" data-k="text" spellcheck="true" lang="de" rows="4" placeholder="Was hast du an diesem Tag gemacht?">${esc(d.text)}</textarea>`
+        ${ed ? `<textarea data-i="${i}" data-k="text" spellcheck="true" lang="de" rows="4" placeholder="Was hast du an diesem Tag gemacht?">${esc(d.text)}</textarea>
+        <div class="tools">
+          <button type="button" data-act="insert" data-i="${i}">＋ Einfügen</button>
+          <button type="button" data-act="ideas" data-i="${i}" ${locked('ideen') ? 'disabled' : ''}>💡 Ideen</button>
+          <button type="button" data-act="remember" data-i="${i}">★ Markiertes merken</button>
+          <button type="button" data-act="undo" data-i="${i}" id="undo-${i}" ${(R.undo[i] || []).length ? '' : 'disabled'}>↶ Rückgängig</button>
+        </div><div id="panel-${i}"></div>`
       : `<div class="readonly">${esc(d.text) || '&nbsp;'}</div>`}
         <div class="fit" id="fit-${i}">${fit && !fit.fits ? fitMsg(fit) : ''}</div>
         <div class="issues" id="iss-${i}"></div>
@@ -305,18 +449,125 @@
   }
   const fitMsg = (f) => `<span class="toolong">Zu lang für das Feld im Formular (${f.over} Zeile${f.over === 1 ? '' : 'n'} zu viel) – bitte etwas kürzen.</span>`;
 
+  /* Text programmgesteuert aendern, mit Rueckgaengig */
+  function setText(i, value, cursor) {
+    const day = R.rep.days[i];
+    if (value === day.text) return;
+    (R.undo[i] ||= []).push(day.text);
+    if (R.undo[i].length > 40) R.undo[i].shift();
+    day.text = value;
+    const ta = $(`textarea[data-i="${i}"]`);
+    if (ta) { ta.value = value; if (cursor !== undefined) { ta.focus(); ta.setSelectionRange(cursor, cursor); } }
+    const u = $('#undo-' + i); if (u) u.disabled = false;
+    markDirty(true);
+    runCheck(i);
+  }
+  function undo(i) {
+    const st = R.undo[i] || []; if (!st.length) return;
+    const prev = st.pop(), day = R.rep.days[i];
+    day.text = prev;
+    const ta = $(`textarea[data-i="${i}"]`); if (ta) ta.value = prev;
+    const u = $('#undo-' + i); if (u) u.disabled = !st.length;
+    markDirty(true); runCheck(i);
+    toast('Rückgängig gemacht.');
+  }
+  /* An der Cursor-Stelle einfuegen, mit sinnvollem Abstand */
+  const lastCursor = {};
+  function insertAt(i, snippet) {
+    const day = R.rep.days[i], t = day.text;
+    const ta = $(`textarea[data-i="${i}"]`);
+    let pos = lastCursor[i] ?? t.length;
+    if (pos > t.length) pos = t.length;
+    const before = t.slice(0, pos), after = t.slice(pos);
+    let sep = '';
+    if (before.trim()) sep = /[\s(„"-]$/.test(before) ? '' : /[.!?:;,]$/.test(before.trimEnd()) ? ' ' : ', ';
+    const tail = after && !/^[\s.,;:)]/.test(after) ? ' ' : '';
+    const value = before + sep + snippet + tail + after;
+    setText(i, value, (before + sep + snippet).length);
+    lastCursor[i] = (before + sep + snippet).length;
+    if (ta) ta.blur();
+  }
+
+  function openPanel(i, kind, html) {
+    const el = $('#panel-' + i);
+    if (R.panel[i] === kind) { el.innerHTML = ''; R.panel[i] = null; return; }
+    R.panel[i] = kind; el.innerHTML = `<div class="panel">${html}</div>`;
+  }
+  function ortText(o) { return [o.titel, o.adresse ? `(${o.adresse})` : ''].filter(Boolean).join(' '); }
+  function insertPanel(i) {
+    const orte = S.user.orte || [], bs = S.user.bausteine || [];
+    let html = '';
+    if (orte.length) {
+      html += '<h4>Arbeitsorte</h4>' + orte.map((o, k) => `<div class="pick">
+        ${o.titel || o.adresse ? `<button type="button" data-act="ins" data-i="${i}" data-src="ort" data-k="${k}" data-p="ort">${esc(ortText(o))}</button>` : ''}
+        ${o.person ? `<button type="button" data-act="ins" data-i="${i}" data-src="ort" data-k="${k}" data-p="person">mit ${esc(o.person)}</button>` : ''}
+        ${o.titel && o.person ? `<button type="button" data-act="ins" data-i="${i}" data-src="ort" data-k="${k}" data-p="beides">${esc(o.titel)} mit ${esc(o.person)}</button>` : ''}</div>`).join('');
+    }
+    if (bs.length) html += '<h4>Textbausteine</h4><div class="pick">' + bs.map((b, k) => `<button type="button" data-act="ins" data-i="${i}" data-src="bs" data-k="${k}">${esc(b.text)}</button>`).join('') + '</div>';
+    if (!html) html = '<p class="muted">Noch nichts angelegt. Unter <a href="#/einstellungen">Einstellungen</a> kannst du Arbeitsorte anlegen, oder du markierst hier Text und tippst „Markiertes merken“.</p>';
+    else html += '<p class="muted small-t">Wird an der Stelle eingefügt, wo der Cursor zuletzt stand. <a href="#/einstellungen">Verwalten</a></p>';
+    openPanel(i, 'insert', html);
+  }
+  async function ideasPanel(i) {
+    if (R.panel[i] === 'ideas') return openPanel(i, 'ideas');
+    openPanel(i, 'ideas', '<p class="muted">Suche passende Ideen …</p>');
+    try {
+      const { ideas } = await api('POST', '/api/ideas', { id: R.rep.id, day: i, text: R.rep.days[i].text, week: R.rep.days.filter((_, k) => k !== i).map((d) => d.text) });
+      if (R.panel[i] !== 'ideas') return;
+      R.ideas = R.ideas || {}; R.ideas[i] = ideas;
+      $('#panel-' + i).innerHTML = `<div class="panel"><h4>Ideen für ${TAGE[wd(R.rep.days[i].date)]}</h4>
+        ${ideas.length ? ideas.map((x, k) => `<div class="idea"><div class="t">${esc(x.text)}<span class="q">${esc(x.quelle)}</span></div>
+          <button type="button" class="ins" data-act="idea" data-i="${i}" data-k="${k}">Einfügen</button>
+          <button type="button" data-act="ideacopy" data-i="${i}" data-k="${k}">Kopieren</button></div>`).join('')
+      : '<p class="muted">Noch keine Ideen. Je mehr Berichte du schreibst, desto besser werden die Vorschläge.</p>'}
+        <p class="muted small-t">Vorschläge aus deinen eigenen Berichten und den anderen Tagen dieser Woche. Danach bitte selbst anpassen.</p></div>`;
+    } catch (x) { $('#panel-' + i).innerHTML = `<div class="panel"><div class="msg err">${esc(x.message)}</div></div>`; }
+  }
+  async function remember(i) {
+    const ta = $(`textarea[data-i="${i}"]`);
+    let sel = ta ? ta.value.slice(ta.selectionStart, ta.selectionEnd).trim() : '';
+    if (!sel && R.lastSel && R.lastSel.i === i) sel = R.lastSel.text;
+    if (!sel) return toast('Erst ein Stück Text im Feld markieren, dann „Markiertes merken“ tippen.');
+    if (sel.length > 300) return toast('Bitte höchstens 300 Zeichen markieren.');
+    if ((S.user.bausteine || []).some((b) => b.text === sel)) return toast('Diesen Baustein gibt es schon.');
+    try { S.user = (await api('POST', '/api/me', { bausteine: [...(S.user.bausteine || []), { text: sel }] })).user; toast(`Gemerkt: „${sel.slice(0, 40)}${sel.length > 40 ? '…' : ''}“`); }
+    catch (x) { toast(x.message); }
+  }
+
+  /* Cursor und Markierung merken, bevor ein Knopf getippt wird (Handy verliert sie sonst) */
+  function track(e) {
+    const ta = e.target; if (!ta || !ta.dataset || ta.dataset.k !== 'text' || !R.rep) return;
+    const i = Number(ta.dataset.i);
+    lastCursor[i] = ta.selectionEnd;
+    if (ta.selectionEnd > ta.selectionStart) R.lastSel = { i, text: ta.value.slice(ta.selectionStart, ta.selectionEnd).trim() };
+  }
+  ['keyup', 'mouseup', 'touchend', 'select'].forEach((ev) => app.addEventListener(ev, track));
+  document.addEventListener('selectionchange', () => track({ target: document.activeElement }));
+
   function bindReport() {
     app.onclick = async (e) => {
       const b = e.target.closest('button[data-act]');
       if (!b) return;
-      const act = b.dataset.act;
+      const act = b.dataset.act, i = Number(b.dataset.i);
       if (act === 'save') return busy(b, () => savePdf(R.rep));
       if (act === 'reopen') return reopen();
       if (act === 'delete') return del();
       if (act === 'finish') return finish(b);
-      if (act === 'fix') return applyFix(Number(b.dataset.i), Number(b.dataset.m), b.dataset.v);
-      if (act === 'ignore') { R.ignored.add(b.dataset.key); renderIssues(Number(b.dataset.i)); return; }
+      if (act === 'fix') return applyFix(i, Number(b.dataset.m), b.dataset.v);
+      if (act === 'ignore') { R.ignored.add(b.dataset.key); renderIssues(i); return; }
       if (act === 'dict') return addDict(b.dataset.word);
+      if (act === 'insert') return insertPanel(i);
+      if (act === 'ideas') return ideasPanel(i);
+      if (act === 'remember') return remember(i);
+      if (act === 'undo') return undo(i);
+      if (act === 'ins') {
+        let t = '';
+        if (b.dataset.src === 'bs') t = S.user.bausteine[Number(b.dataset.k)].text;
+        else { const o = S.user.orte[Number(b.dataset.k)]; t = b.dataset.p === 'person' ? `mit ${o.person}` : b.dataset.p === 'beides' ? `${o.titel} mit ${o.person}` : ortText(o); }
+        return insertAt(i, t);
+      }
+      if (act === 'idea') return insertAt(i, R.ideas[i][Number(b.dataset.k)].text);
+      if (act === 'ideacopy') return copy(R.ideas[i][Number(b.dataset.k)].text);
     };
     if (!editable()) return;
     app.oninput = (e) => {
@@ -324,12 +575,13 @@
       if (el.dataset.f === 'nr') { R.rep.nr = Number(el.value) || R.rep.nr; markDirty(); return; }
       if (el.dataset.i === undefined) return;
       const i = Number(el.dataset.i), day = R.rep.days[i];
-      if (el.dataset.k === 'text') { day.text = el.value; markDirty(); scheduleCheck(i); }
+      if (el.dataset.k === 'text') { day.text = el.value; lastCursor[i] = el.selectionEnd; markDirty(); scheduleCheck(i); }
       if (el.dataset.k === 'hours') { day.hours = Number(el.value) || 0; markDirty(); }
     };
     app.onchange = (e) => {
       const el = e.target;
       if (el.dataset.f === 'bereich') { R.rep.bereich = el.value; markDirty(true); return; }
+      if (el.dataset.f === 'ausbildungsjahr') { R.rep.ausbildungsjahr = Number(el.value); markDirty(true); return; }
       if (el.dataset.k !== 'type') return;
       const i = Number(el.dataset.i), day = R.rep.days[i], old = day.type, hol = R.rep.holidays[i];
       day.type = el.value;
@@ -338,7 +590,6 @@
       $('#day-' + i).outerHTML = dayRow(day, i, true);
       markDirty(true); runCheck(i);
     };
-    /* Beim Verlassen eines Feldes sofort speichern und pruefen */
     app.onfocusout = (e) => {
       const k = e.target.dataset && e.target.dataset.k;
       if (k === 'text') runCheck(Number(e.target.dataset.i));
@@ -350,7 +601,7 @@
     R.dirty = true;
     const s = $('#savestate'); if (s) s.textContent = 'Wird gespeichert …';
     clearTimeout(R.saveTimer);
-    R.saveTimer = setTimeout(() => save(), now ? 50 : 1500);
+    R.saveTimer = setTimeout(() => save(), now ? 50 : 1200);
   }
   async function save() {
     clearTimeout(R.saveTimer);
@@ -358,11 +609,11 @@
     if (R.saving) { await R.saving; if (!R.dirty) return; }
     R.dirty = false;
     const rep = R.rep;
-    R.saving = api('POST', '/api/report/save', { id: rep.id, nr: rep.nr, bereich: rep.bereich, days: rep.days }).then((res) => {
+    R.saving = api('POST', '/api/report/save', { id: rep.id, nr: rep.nr, bereich: rep.bereich, ausbildungsjahr: rep.ausbildungsjahr, days: rep.days }).then((res) => {
       if (R.rep !== rep) return;
       rep.fits = res.report.fits; rep.file = res.report.file;
       rep.days.forEach((d, i) => { const f = rep.fits[wd(d.date)], el = $('#fit-' + i); if (el) el.innerHTML = f && !f.fits ? fitMsg(f) : ''; });
-      const s = $('#savestate'); if (s && !R.dirty) s.textContent = 'Gespeichert ✓';
+      const s = $('#savestate'); if (s && !R.dirty) s.textContent = '✓ Gespeichert';
     }).catch((x) => {
       R.dirty = true;
       const s = $('#savestate'); if (s) s.textContent = 'Nicht gespeichert: ' + x.message;
@@ -374,11 +625,11 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
 
   /* ---- Rechtschreibung und Grammatik ---- */
-  function scheduleCheck(i) { clearTimeout(R.checkTimers[i]); R.checkTimers[i] = setTimeout(() => runCheck(i), 1800); }
+  function scheduleCheck(i) { clearTimeout(R.checkTimers[i]); R.checkTimers[i] = setTimeout(() => runCheck(i), 1500); }
   async function runCheck(i) {
     clearTimeout(R.checkTimers[i]);
     const day = R.rep && R.rep.days[i];
-    if (!day || S.settings.ltAus) return null;
+    if (!day || locked('pruefung')) return null;
     const t = day.text;
     if (R.checks[i] && R.checks[i].text === t) { renderIssues(i); return R.checks[i]; }
     if (!t.trim()) { R.checks[i] = { text: t, matches: [] }; renderIssues(i); return R.checks[i]; }
@@ -417,10 +668,7 @@
     const c = R.checks[i], day = R.rep.days[i];
     if (!c || c.text !== day.text) return runCheck(i);
     const m = c.matches[mi];
-    day.text = day.text.slice(0, m.offset) + value + day.text.slice(m.offset + m.length);
-    const ta = $(`textarea[data-i="${i}"]`); if (ta) ta.value = day.text;
-    markDirty(true);
-    runCheck(i);
+    setText(i, day.text.slice(0, m.offset) + value + day.text.slice(m.offset + m.length));
   }
   async function addDict(word) {
     try { S.user.woerterbuch = (await api('POST', '/api/me/dict', { add: word })).woerterbuch; } catch (x) { return toast(x.message); }
@@ -437,33 +685,36 @@
       R.dirty = true; await save();
       if (R.dirty) return errBox(errEl, 'Speichern hat nicht geklappt. Bitte noch einmal versuchen.');
       if (!S.user.hasSignature) return errBox(errEl, 'Bitte zuerst in den Einstellungen deine Unterschrift hinterlegen.');
+      const empty = R.rep.days.findIndex((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim());
+      if (empty >= 0) { $('#day-' + empty).scrollIntoView({ behavior: 'smooth', block: 'center' }); return errBox(errEl, `${TAGE[wd(R.rep.days[empty].date)]} ist noch leer.`); }
       const long = R.rep.days.findIndex((d) => { const f = R.rep.fits[wd(d.date)]; return f && !f.fits; });
       if (long >= 0) { $('#day-' + long).scrollIntoView({ behavior: 'smooth', block: 'center' }); return errBox(errEl, `${TAGE[wd(R.rep.days[long].date)]}: zu viel Text für das Feld. Bitte etwas kürzen.`); }
       btn.textContent = 'Prüfe …';
       let open = 0, failedCheck = false;
-      if (!S.settings.ltAus) {
+      if (!locked('pruefung')) {
         const results = await Promise.all(R.rep.days.map((_, i) => runCheck(i)));
         results.forEach((c, i) => { if (!c) return; if (c.error) failedCheck = true; open += (openIssues(i) || []).length; });
       }
       btn.textContent = 'Prüfen & unterschreiben';
       if (open) {
         const first = R.rep.days.findIndex((_, i) => (openIssues(i) || []).length);
-        const ch = await modal(`<h2>Noch ${open} Hinweis${open > 1 ? 'e' : ''}</h2><p>Die Prüfung hat noch etwas gefunden. Unter jedem Tag kannst du auswählen, was geändert werden soll, oder „So lassen“ tippen.</p>
+        const ch = await modal(`<h2>Noch ${open} Hinweis${open > 1 ? 'e' : ''}</h2><p>Die Prüfung hat noch etwas gefunden. Unter dem Tag kannst du auswählen, was geändert werden soll, oder „So lassen“ tippen.</p>
           <div class="actions"><button class="primary" data-m="fix">Zu den Hinweisen</button><button data-m="go">Trotzdem unterschreiben</button></div>`);
         if (ch !== 'go') { if (first >= 0) $('#day-' + first).scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
       } else if (failedCheck) {
         const ch = await modal('<h2>Prüfung nicht erreichbar</h2><p>Die Rechtschreibprüfung antwortet gerade nicht. Trotzdem unterschreiben?</p><div class="actions"><button data-m="go" class="primary">Trotzdem unterschreiben</button><button data-m="no">Abbrechen</button></div>');
         if (ch !== 'go') return;
       }
-      const ok = await modal(`<h2>Unterschreiben</h2><p>Der Bericht Nr. ${R.rep.nr} wird mit deiner Unterschrift und dem Datum <strong>${de(date)}</strong> versehen und als PDF erstellt.</p>
+      const ok = await modal(`<h2>Unterschreiben</h2><p>Bericht Nr. ${R.rep.nr} bekommt deine Unterschrift mit dem Datum <strong>${de(date)}</strong> und wird als PDF erstellt.</p>
         <p><img class="sigimg" src="/api/me/signature?t=${Date.now()}" alt="Deine Unterschrift"></p>
-        <p class="muted">Danach noch ${S.settings.bearbeitbarTage} Tage nachträglich bearbeitbar.</p>
+        <p class="muted">Danach kannst du ihn noch ${S.settings.bearbeitbarTage} Tage lang ändern.</p>
         <div class="actions"><button class="ok" data-m="yes">Unterschreiben</button><button data-m="no">Abbrechen</button></div>`);
       if (ok !== 'yes') return;
       try {
         R.rep = (await api('POST', '/api/report/finish', { id: R.rep.id, date })).report;
         drawReport();
-        toast('Fertig! Jetzt nur noch speichern.');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        toast('Fertig! Jetzt nur noch „PDF speichern“ tippen.');
       } catch (x) { errBox(errEl, x.message); }
     });
   }
@@ -481,58 +732,103 @@
 
   /* ---------- Einstellungen ---------- */
   async function viewSettings() {
-    const u = S.user, bereiche = S.settings.bereiche || [];
+    const u = S.user;
+    if (isAdmin()) {
+      app.innerHTML = `<div class="card"><h1>Admin-Konto</h1><p class="muted">Der Admin-Zugang ist nur zum Verwalten da und hat kein eigenes Berichtsheft. Für deine eigenen Berichte legst du dir unter <a href="#/admin">Konten</a> ein persönliches Konto an.</p></div>
+        <div class="card">${pwForm('Passwort ändern')}</div>`;
+      return bindPw(() => toast('Passwort geändert.'));
+    }
     app.innerHTML = `
-      <div class="card"><h1>Einstellungen</h1><p class="muted">Diese Angaben werden in jeden neuen Bericht automatisch eingetragen.</p>
-      <form id="pf">
-        <div class="grid"><div><label>Vorname</label><input type="text" name="vorname" value="${esc(u.vorname)}" required></div>
-        <div><label>Nachname</label><input type="text" name="nachname" value="${esc(u.nachname)}" required></div></div>
-        <div class="grid"><div><label>Ausbildungsbeginn</label><input type="date" name="beginn" value="${esc(u.beginn)}" required></div>
-        <div><label>Ausbildungsende (optional)</label><input type="date" name="ende" value="${esc(u.ende)}"></div></div>
-        <label>Üblicher Ausbildungsbereich</label><select name="bereich">${bereiche.map((b) => `<option ${b === u.bereich ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>
+      <h1>Einstellungen</h1><p class="muted">Alles hier wird automatisch in neue Berichte übernommen.</p>
+      <div class="card"><h2>Persönliche Angaben</h2>
+      <form id="pf">${profileFields(u)}
+        <div class="grid"><div><label>Stunden pro Arbeitstag</label><input type="number" name="stunden" min="0" max="24" step="0.1" value="${u.stunden}"></div>
+        <div><label>Stunden pro Schultag</label><input type="number" name="schulstunden" min="0" max="24" step="0.1" value="${u.schulstunden}"></div></div>
         <label>Feste Berufsschultage</label><div>${[0, 1, 2, 3, 4, 5].map((t) => `<label class="inline"><input type="checkbox" name="schultage" value="${t}" ${u.schultage.includes(t) ? 'checked' : ''}> ${KURZ[t]}</label>`).join('')}</div>
-        <div class="grid"><div><label>Stunden pro Arbeitstag</label><input type="number" name="stunden" min="0" max="24" step="0.1" value="${u.stunden ?? 7.6}"></div>
-        <div><label>Stunden pro Schultag</label><input type="number" name="schulstunden" min="0" max="24" step="0.1" value="${u.schulstunden ?? 7.6}"></div></div>
+        <div class="hint">Diese Tage werden in neuen Berichten als Berufsschule vorbelegt.</div>
+        <label>Üblicher Ausbildungsbereich</label><select name="bereich">${bereichListe(u.bereich).map((b) => `<option ${b === u.bereich ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>
         <div id="perr"></div><div class="actions"><button class="primary">Speichern</button></div></form></div>
 
+      <div class="card"><h2>Arbeitsorte</h2><p class="muted">Z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“. Im Bericht fügst du sie mit <strong>＋ Einfügen</strong> ein. Der Bereich erscheint auch in der Auswahl „Ausbildungsbereich“.</p>
+        <div id="orte"></div>
+        <div class="actions"><button id="ortadd">＋ Arbeitsort hinzufügen</button><button class="primary" id="ortsave">Arbeitsorte speichern</button></div><div id="oerr"></div></div>
+
+      <div class="card"><h2>Textbausteine</h2><p class="muted">Sätze, die du oft brauchst. Im Bericht kannst du auch Text markieren und „★ Markiertes merken“ tippen.</p>
+        <div id="bst"></div>
+        <form id="bf" class="row mt"><input type="text" name="t" placeholder="Neuer Textbaustein" class="grow" maxlength="300"><button>Hinzufügen</button></form></div>
+
       <div class="card"><h2>Unterschrift</h2>
-        <p class="muted">Wird beim Unterschreiben mit Datum in den Bericht gesetzt, jedes Mal leicht anders platziert wie von Hand. Mit dem Finger oder der Maus unterschreiben oder ein Foto deiner Unterschrift auf weißem Papier hochladen.</p>
+        <p class="muted">Wird beim Unterschreiben mit Datum eingesetzt, jedes Mal minimal anders, wie von Hand. Mit dem Finger oder der Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen.</p>
+        ${lockNote('unterschreiben')}
         <div id="cursig">${u.hasSignature ? `<p>Aktuell hinterlegt:</p><img class="sigimg" src="/api/me/signature?t=${Date.now()}" alt="Unterschrift">` : '<div class="msg warn">Noch keine Unterschrift hinterlegt.</div>'}</div>
-        <div class="sigpad mt"><canvas id="pad" width="900" height="300"></canvas><div class="base"></div><div class="hint" id="padhint">Hier unterschreiben</div></div>
+        <div class="sigpad mt"><canvas id="pad" width="900" height="300"></canvas><div class="base"></div><div class="hint2" id="padhint">Hier unterschreiben</div></div>
         <div class="actions"><button class="primary" id="sigsave">Unterschrift speichern</button><button id="sigclear">Feld leeren</button>
-        <label class="btn nomargin">Bild hochladen<input type="file" id="sigfile" accept="image/*" hidden></label></div><div id="serr"></div></div>
+        <label class="btn nomargin">Foto hochladen<input type="file" id="sigfile" accept="image/*" hidden></label></div><div id="serr"></div></div>
 
       <div class="card"><h2>Speicherort für PDFs</h2><div id="folder"></div></div>
 
-      <div class="card"><h2>Mein Wörterbuch</h2><p class="muted">Fachwörter, die die Rechtschreibprüfung nicht als Fehler melden soll.</p>
+      <div class="card"><h2>Mein Wörterbuch</h2><p class="muted">Fachwörter, die die Rechtschreibprüfung nicht anstreichen soll.</p>
         <div class="tags" id="dict">${dictTags()}</div>
         <form id="df" class="row"><input type="text" name="w" placeholder="Wort hinzufügen" class="grow"><button>Hinzufügen</button></form></div>
 
       <div class="card">${pwForm('Passwort ändern')}</div>
-      <p class="muted center">Angemeldet als <strong>${esc(u.username)}</strong>${u.role === 'admin' ? ' (Admin)' : ''}</p>`;
+      <div class="card"><h2>Hilfe</h2><div class="actions nomargin"><button id="tour2">Einführung ansehen</button><a class="btn" href="#/hilfe">Anleitung öffnen</a></div></div>
+      <p class="muted center">Angemeldet als <strong>${esc(u.username)}</strong></p>`;
 
     $('#pf').onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target), body = Object.fromEntries(fd);
       body.schultage = fd.getAll('schultage').map(Number);
-      try { S.user = (await api('POST', '/api/me', body)).user; toast('Gespeichert.'); errBox($('#perr'), ''); }
+      try { const r = await api('POST', '/api/me', body); S.user = r.user; S.missing = r.missing; toast('Gespeichert.'); errBox($('#perr'), ''); }
       catch (x) { errBox($('#perr'), x.message); }
     };
     bindPw(() => toast('Passwort geändert.'));
-    bindDict();
-    signaturePad();
-    folderCard();
+    bindDict(); signaturePad(); folderCard(); orteEditor(); bausteineEditor();
+    $('#tour2').onclick = () => tutorial(true);
+  }
+
+  function orteEditor() {
+    let list = (S.user.orte || []).map((o) => ({ ...o }));
+    const draw = () => {
+      $('#orte').innerHTML = list.map((o, k) => `<div class="ort" data-k="${k}"><button class="small ghost rm" data-rm="${k}" aria-label="Entfernen">✕ Entfernen</button>
+        <div class="grid"><div><label>Überschrift</label><input type="text" data-o="titel" value="${esc(o.titel)}" placeholder="z. B. Hof"></div>
+        <div><label>Ausbildungsbereich (Kürzel)</label><input type="text" data-o="label" value="${esc(o.label)}" placeholder="z. B. AW"></div></div>
+        <label>Adresse</label><input type="text" data-o="adresse" value="${esc(o.adresse)}" placeholder="z. B. Liebauer Straße 14, Bremen">
+        <label>Ausbilder/in oder Geselle/in</label><input type="text" data-o="person" value="${esc(o.person)}" placeholder="z. B. Geselle Herr Müller"></div>`).join('')
+        || '<p class="muted">Noch keine Arbeitsorte.</p>';
+    };
+    draw();
+    $('#orte').oninput = (e) => { const box = e.target.closest('.ort'); if (box && e.target.dataset.o) list[Number(box.dataset.k)][e.target.dataset.o] = e.target.value; };
+    $('#orte').onclick = (e) => { const b = e.target.closest('[data-rm]'); if (b) { list.splice(Number(b.dataset.rm), 1); draw(); } };
+    $('#ortadd').onclick = () => { list.push({ titel: '', adresse: '', label: '', person: '' }); draw(); const l = $$('.ort input'); if (l.length) l[l.length - 4].focus(); };
+    $('#ortsave').onclick = async (e) => {
+      await busy(e.target, async () => {
+        try { S.user = (await api('POST', '/api/me', { orte: list })).user; list = S.user.orte.map((o) => ({ ...o })); draw(); errBox($('#oerr'), 'Arbeitsorte gespeichert.', 'ok'); }
+        catch (x) { errBox($('#oerr'), x.message); }
+      });
+    };
+  }
+  function bausteineEditor() {
+    const draw = () => {
+      const bs = S.user.bausteine || [];
+      $('#bst').innerHTML = bs.map((b, k) => `<div class="bst"><span>${esc(b.text)}</span><button class="small ghost" data-del="${k}">✕</button></div>`).join('') || '<p class="muted">Noch keine Textbausteine.</p>';
+    };
+    const store = async (list) => { try { S.user = (await api('POST', '/api/me', { bausteine: list })).user; draw(); } catch (x) { toast(x.message); } };
+    draw();
+    $('#bst').onclick = (e) => { const b = e.target.closest('[data-del]'); if (b) store(S.user.bausteine.filter((_, k) => k !== Number(b.dataset.del))); };
+    $('#bf').onsubmit = async (e) => { e.preventDefault(); const t = e.target.t.value.trim(); if (!t) return; await store([...(S.user.bausteine || []), { text: t }]); e.target.reset(); };
   }
 
   async function folderCard() {
     const el = $('#folder');
     if (!canPickFolder()) {
-      el.innerHTML = `<p class="muted">Auf dem Handy öffnet „PDF speichern“ das Teilen-Menü. Dort <strong>„In Dateien sichern“</strong> (iPhone) bzw. <strong>„Speichern“</strong> (Android) wählen und deinen Ordner aussuchen.</p>
+      el.innerHTML = `<p class="muted">Am Handy öffnet „PDF speichern“ das Teilen-Menü. Dort <strong>„In Dateien sichern“</strong> (iPhone) oder <strong>„Speichern“</strong> (Android) wählen und deinen Ordner aussuchen.</p>
         <p class="muted">Am PC mit Chrome oder Edge kannst du hier einen festen Ordner einstellen. Dann landet jedes PDF automatisch dort.</p>`;
       return;
     }
     const dir = await IDB.get('dir');
     el.innerHTML = `<p>${dir ? `PDFs werden gespeichert in: <strong>${esc(dir.name)}</strong>` : 'Noch kein fester Ordner. PDFs landen im Download-Ordner.'}</p>
+      <p class="muted small-t">Gilt nur für dieses Gerät und diesen Browser.</p>
       <div class="actions"><button class="primary" id="pick">${dir ? 'Anderen Ordner wählen' : 'Ordner wählen'}</button>${dir ? '<button id="unpick">Zurücksetzen</button>' : ''}</div>`;
     $('#pick').onclick = async () => {
       try { const h = await window.showDirectoryPicker({ id: 'berichtsheft', mode: 'readwrite' }); await IDB.set('dir', h); toast('Ordner gespeichert.'); folderCard(); }
@@ -576,7 +872,6 @@
         const sc = Math.min(c.width / img.width, c.height / img.height) * 0.95;
         const w = img.width * sc, h = img.height * sc;
         ctx.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
-        /* Weisses Papier durchsichtig machen, Tinte bleibt */
         const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data;
         for (let i = 0; i < p.length; i += 4) {
           const l = 0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2];
@@ -589,7 +884,7 @@
       e.target.value = '';
     };
     $('#sigsave').onclick = async (e) => {
-      if (empty) return errBox($('#serr'), 'Bitte zuerst unterschreiben.');
+      if (empty) return errBox($('#serr'), 'Bitte zuerst im Feld unterschreiben.');
       const png = trimmed(c);
       if (!png) return errBox($('#serr'), 'Keine Unterschrift erkannt.');
       await busy(e.target, async () => {
@@ -613,32 +908,50 @@
   }
 
   /* ---------- Admin ---------- */
-  async function viewAdmin(tab, arg) {
-    const tabs = [['konten', 'Konten'], ['einstellungen', 'Einstellungen']];
+  async function viewAdmin(tab) {
+    const tabs = [['konten', 'Konten'], ['funktionen', 'Funktionen sperren'], ['einstellungen', 'Einstellungen']];
+    if (!tabs.some(([k]) => k === tab)) tab = 'konten';
     app.innerHTML = `<div class="tabs">${tabs.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div><div id="adm"><p class="loading">Lädt …</p></div>`;
     $$('[data-tab]').forEach((b) => { b.onclick = () => { location.hash = '#/admin/' + b.dataset.tab; }; });
-    if (tab === 'konten' && arg) return adminUserReports(arg);
     if (tab === 'konten') return adminUsers();
-    const { settings, bundeslaender } = await api('GET', '/api/admin/settings');
-    adminSettings(settings, bundeslaender);
+    const data = await api('GET', '/api/admin/settings');
+    if (tab === 'funktionen') adminLocks(data); else adminSettings(data.settings, data.bundeslaender);
+  }
+
+  function zugangsText(name, pw) {
+    return `Dein Zugang zum Berichtsheft\nAdresse: ${location.origin}\nBenutzername: ${name}\nStartpasswort: ${pw}\n\nBeim ersten Anmelden legst du ein eigenes Passwort fest und trägst deinen Namen, deine Firma und deinen Standort ein.`;
+  }
+  async function showPw(name, pw) {
+    const t = zugangsText(name, pw);
+    await modal(`<h2>Zugangsdaten</h2><p>Benutzername: <strong>${esc(name)}</strong></p><p>Startpasswort:</p><p><span class="pw">${esc(pw)}</span></p>
+      <p class="muted">Wird nur jetzt angezeigt. Beim ersten Anmelden muss die Person ein eigenes Passwort festlegen und ihre Angaben eintragen.</p>
+      <div class="actions"><button data-x="copy">Text zum Weitergeben kopieren</button><button class="primary" data-m="ok">Fertig</button></div>`,
+    (box) => { $('[data-x=copy]', box).onclick = () => copy(t); });
   }
 
   async function adminUsers() {
     const { users } = await api('GET', '/api/admin/users');
-    $('#adm').innerHTML = `<div class="card"><h2>Neues Konto</h2>
-      <form id="nf"><div class="grid"><div><label>Vorname</label><input type="text" name="vorname"></div><div><label>Nachname</label><input type="text" name="nachname"></div></div>
-      <div class="grid"><div><label>Benutzername</label><input type="text" name="username" autocapitalize="none" required></div><div><label>Ausbildungsbeginn</label><input type="date" name="beginn"></div></div>
-      <label>Rolle</label><select name="role"><option value="azubi">Azubi</option><option value="admin">Admin</option></select>
-      <div id="nerr"></div><div class="actions"><button class="primary">Konto anlegen</button></div></form></div>
-      <div class="list">${users.map((u) => `<div class="item"><div class="main"><strong>${esc(u.vorname)} ${esc(u.nachname)} <span class="muted">@${esc(u.username)}</span></strong>
-        <span class="muted">${u.role === 'admin' ? 'Admin' : 'Azubi'} · ${u.reports} Berichte · ${u.lastLogin ? 'zuletzt ' + deTime(u.lastLogin) : 'noch nie angemeldet'}</span></div>
-        ${u.active ? '' : '<span class="chip bad">Gesperrt</span>'}
-        <a class="btn small" href="#/admin/konten/${esc(u.id)}">Berichte</a>
+    const azubis = users.filter((u) => u.role !== 'admin'), admins = users.filter((u) => u.role === 'admin');
+    const card = (u) => `<div class="item">
+      <div class="main"><strong>${u.vorname || u.nachname ? esc(`${u.vorname} ${u.nachname}`) : '<span class="muted">Noch nicht eingerichtet</span>'} <span class="muted">@${esc(u.username)}</span></strong>
+        <span class="muted">${u.firma ? esc(u.firma) : 'Firma –'} · ${u.standort ? esc(u.standort) : 'Standort –'}</span><br>
+        <span class="muted small-t">Dabei ${since(u.created)} · zuletzt aktiv ${ago(u.lastSeen)}${u.role === 'admin' ? '' : ` · ${u.reports} Berichte`}</span></div>
+      ${u.active ? '' : '<span class="chip bad">Gesperrt</span>'}${u.mustChange ? '<span class="chip warn">Startpasswort</span>' : ''}${u.role === 'admin' ? '<span class="chip brand">Admin</span>' : ''}
+      <div class="row">
+        <button class="small" data-u="${esc(u.id)}" data-a="edit">Bearbeiten</button>
         <button class="small" data-u="${esc(u.id)}" data-a="pw">Neues Passwort</button>
-        ${u.id === S.user.id ? '' : `<button class="small" data-u="${esc(u.id)}" data-a="role" data-v="${u.role === 'admin' ? 'azubi' : 'admin'}">${u.role === 'admin' ? 'Admin entziehen' : 'Zum Admin'}</button>
-        <button class="small ${u.active ? 'danger' : ''}" data-u="${esc(u.id)}" data-a="active" data-v="${u.active ? '0' : '1'}">${u.active ? 'Sperren' : 'Entsperren'}</button>`}</div>`).join('')}</div>`;
-    const showPw = (name, pw) => modal(`<h2>Zugangsdaten</h2><p>Adresse: <strong>${esc(location.host)}</strong><br>Benutzername: <strong>${esc(name)}</strong></p><p>Vorläufiges Passwort:</p><p><span class="pw">${esc(pw)}</span></p>
-      <p class="muted">Wird nur jetzt angezeigt. Beim ersten Anmelden muss ein eigenes Passwort gewählt werden.</p><div class="actions"><button class="primary" data-m="ok">Notiert</button></div>`);
+        ${u.role === 'admin' ? '' : `<button class="small" data-u="${esc(u.id)}" data-a="extend">Frist +30 Tage</button>`}
+        ${u.id === S.user.id ? '' : `<button class="small ${u.active ? 'danger' : ''}" data-u="${esc(u.id)}" data-a="active" data-v="${u.active ? '0' : '1'}">${u.active ? 'Sperren' : 'Entsperren'}</button>`}
+      </div></div>`;
+    $('#adm').innerHTML = `<div class="card"><h2>Neues Konto</h2>
+      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma und Standort ein.</p>
+      <form id="nf" class="row"><input type="text" name="username" autocapitalize="none" required placeholder="z. B. carlo.w" class="grow">
+      <select name="role" class="auto-w"><option value="azubi">Azubi</option><option value="admin">Admin</option></select><button class="primary">Anlegen</button></form>
+      <div id="nerr"></div>
+      <p class="muted small-t">Tipp: Lege dir für deine eigenen Berichte ein normales Azubi-Konto an. Der Admin-Zugang ist nur zum Verwalten.</p></div>
+      <h2>Azubis (${azubis.length})</h2><div class="list">${azubis.map(card).join('') || '<div class="card muted">Noch keine Konten.</div>'}</div>
+      <h2 class="mt2">Admins (${admins.length})</h2><div class="list">${admins.map(card).join('')}</div>
+      <p class="muted small-t mt2">Aus Datenschutzgründen siehst du hier keine Berichte, nur die Kontodaten.</p>`;
     $('#nf').onsubmit = async (e) => {
       e.preventDefault();
       try { const r = await api('POST', '/api/admin/users', Object.fromEntries(new FormData(e.target))); await showPw(r.user.username, r.password); adminUsers(); }
@@ -646,25 +959,56 @@
     };
     $('#adm').onclick = async (e) => {
       const b = e.target.closest('[data-a]'); if (!b) return;
-      const body = { id: b.dataset.u }, a = b.dataset.a;
-      if (a === 'pw') { if (await modal('<h2>Neues Passwort erzeugen?</h2><p>Das alte Passwort gilt dann nicht mehr.</p><div class="actions"><button class="primary" data-m="y">Ja</button><button data-m="n">Abbrechen</button></div>') !== 'y') return; body.resetPassword = true; }
-      if (a === 'role') body.role = b.dataset.v;
-      if (a === 'active') body.active = b.dataset.v === '1';
-      try { const r = await api('POST', '/api/admin/user', body); if (r.password) await showPw(r.user.username, r.password); adminUsers(); } catch (x) { toast(x.message); }
+      const u = users.find((x) => x.id === b.dataset.u), a = b.dataset.a;
+      const body = { id: u.id };
+      if (a === 'pw') {
+        const res = await modal(`<form><h2>Neues Startpasswort für @${esc(u.username)}?</h2>
+          <p>Das bisherige Passwort gilt danach nicht mehr und die Person wird abgemeldet. Beim nächsten Anmelden muss sie ein eigenes Passwort festlegen.</p>
+          <label>Zur Bestätigung den Benutzernamen eintippen: <code>${esc(u.username)}</code></label><input type="text" name="confirm" autocapitalize="none" autocomplete="off" required>
+          <div class="actions"><button class="primary" data-m="form">Neues Passwort erzeugen</button><button type="button" data-m="no">Abbrechen</button></div></form>`);
+        if (!res || typeof res !== 'object') return;
+        body.resetPassword = true; body.confirm = res.confirm;
+      }
+      if (a === 'active') {
+        if (b.dataset.v === '0' && await modal(`<h2>@${esc(u.username)} sperren?</h2><p>Die Person wird sofort abgemeldet und kann sich nicht mehr anmelden, bis du sie wieder entsperrst. Ihre Berichte bleiben erhalten.</p><div class="actions"><button class="danger" data-m="y">Sperren</button><button data-m="n">Abbrechen</button></div>`) !== 'y') return;
+        body.active = b.dataset.v === '1';
+      }
+      if (a === 'extend') {
+        if (await modal(`<h2>Bearbeitungsfrist verlängern?</h2><p>Alle unterschriebenen Berichte von @${esc(u.username)} sind dann noch 30 Tage ab heute bearbeitbar.</p><div class="actions"><button class="primary" data-m="y">Verlängern</button><button data-m="n">Abbrechen</button></div>`) !== 'y') return;
+        body.extendDays = 30;
+      }
+      if (a === 'edit') {
+        const res = await modal(`<form><h2>@${esc(u.username)} bearbeiten</h2>
+          <div class="grid"><div><label>Vorname</label><input type="text" name="vorname" value="${esc(u.vorname)}"></div><div><label>Nachname</label><input type="text" name="nachname" value="${esc(u.nachname)}"></div></div>
+          <label>Firma</label><input type="text" name="firma" value="${esc(u.firma)}"><label>Standort</label><input type="text" name="standort" value="${esc(u.standort)}">
+          <div class="actions"><button class="primary" data-m="form">Speichern</button><button type="button" data-m="no">Abbrechen</button></div></form>`);
+        if (!res || typeof res !== 'object') return;
+        Object.assign(body, res);
+      }
+      try {
+        const r = await api('POST', '/api/admin/user', body);
+        if (r.password) await showPw(r.user.username, r.password);
+        else toast('Gespeichert.');
+        adminUsers();
+      } catch (x) { toast(x.message); }
     };
   }
 
-  async function adminUserReports(id) {
-    const [{ users }, { reports }] = await Promise.all([api('GET', '/api/admin/users'), api('GET', '/api/reports?user=' + encodeURIComponent(id))]);
-    const u = users.find((x) => x.id === id);
-    $('#adm').innerHTML = `<div class="card"><a href="#/admin/konten">‹ Alle Konten</a><h2 class="mt">${esc(u ? u.vorname + ' ' + u.nachname : '')}</h2><p class="muted">${reports.length} Berichte</p></div>
-      <div class="list">${reports.map((r) => `<div class="item"><div class="nr">${r.nr}</div><div class="main"><strong>KW ${r.kw} · ${deShort(r.weekStart)} – ${de(r.bis)}</strong>
-        <span class="muted">${esc(r.bereich)} · ${r.status === 'abgeschlossen' ? 'unterschrieben ' + de(r.signedAt.slice(0, 10)) + (r.editable ? ', bearbeitbar bis ' + de(r.deadline.slice(0, 10)) : ', Frist abgelaufen') : 'in Arbeit'}</span></div>
-        ${statusChip(r)}<a class="btn small primary" href="/api/pdf?id=${esc(r.id)}">PDF</a>
-        ${r.status === 'abgeschlossen' ? `<button class="small" data-ext="${esc(r.id)}">Frist +30 Tage</button>` : ''}</div>`).join('') || '<div class="card muted">Noch keine Berichte.</div>'}</div>`;
-    $('#adm').onclick = async (e) => {
-      const b = e.target.closest('[data-ext]'); if (!b) return;
-      try { await api('POST', '/api/admin/extend', { id: b.dataset.ext, days: 30 }); toast('Frist verlängert.'); adminUserReports(id); } catch (x) { toast(x.message); }
+  function adminLocks({ settings, funktionen }) {
+    $('#adm').innerHTML = `<div class="card"><h2>Funktionen sperren</h2>
+      <p class="muted">Wenn etwas fehlerhaft ist, kannst du es hier vorübergehend für alle abschalten. Die Nutzer sehen dann deinen Hinweis. Berichte gehen dabei nicht verloren.</p>
+      <form id="lf">${Object.entries(funktionen).map(([k, t]) => `<label class="switch"><span>${esc(t)}</span><input type="checkbox" name="${k}" ${settings.gesperrt[k] ? 'checked' : ''}></label>`).join('')}
+      <label>Hinweis für die Nutzer</label><input type="text" name="sperrText" value="${esc(settings.sperrText)}" maxlength="200">
+      <div id="lerr"></div><div class="actions"><button class="primary">Speichern</button></div></form>
+      <p class="muted small-t">Haken = gesperrt. Admins können sich immer anmelden.</p></div>`;
+    $('#lf').onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target, g = Object.fromEntries(Object.keys(funktionen).map((k) => [k, f[k].checked]));
+      try {
+        const s = (await api('POST', '/api/admin/settings', { settings: { gesperrt: g, sperrText: f.sperrText.value } })).settings;
+        S.settings.gesperrt = s.gesperrt; S.settings.sperrText = s.sperrText;
+        errBox($('#lerr'), Object.values(g).some(Boolean) ? 'Gespeichert. Gesperrt: ' + Object.keys(g).filter((k) => g[k]).map((k) => funktionen[k]).join(', ') : 'Gespeichert. Alles freigegeben.', 'ok');
+      } catch (x) { errBox($('#lerr'), x.message); }
     };
   }
 
@@ -672,21 +1016,22 @@
     const T = S.settings.typen, vb = s.vorbelegung;
     $('#adm').innerHTML = `<div class="card"><h2>Vorlage</h2><p class="muted">Ausgefüllt wird das Formular „Ausbildungsnachweis (Berichtsheft) – täglich“ der Handelskammer Bremen.</p>
       <div class="actions"><a class="btn" href="/api/blank" target="_blank" rel="noopener">Leere Vorlage ansehen</a></div></div>
-      <div class="card"><form id="gf"><h2>Einstellungen</h2>
+      <div class="card"><form id="gf"><h2>Einstellungen für alle</h2>
       <label>Ausbildungsbereiche (einer pro Zeile)</label><textarea name="bereiche" rows="4">${esc(s.bereiche.join('\n'))}</textarea>
+      <div class="hint">Jeder kann zusätzlich eigene Bereiche über seine Arbeitsorte anlegen.</div>
       <label>Bundesland (für Feiertage)</label><select name="bundesland">${Object.entries(bl).map(([k, n]) => `<option value="${k}" ${k === s.bundesland ? 'selected' : ''}>${n}</option>`).join('')}</select>
       <label>Tage im Bericht</label><div>${[0, 1, 2, 3, 4, 5, 6].map((t) => `<label class="inline"><input type="checkbox" name="arbeitstage" value="${t}" ${s.arbeitstage.includes(t) ? 'checked' : ''}> ${KURZ[t]}</label>`).join('')}</div>
       <label>Dateiname der PDFs</label><input type="text" name="dateiname" value="${esc(s.dateiname)}" id="fn">
-      <p class="muted">Bausteine: <code>{vorname}</code> <code>{nachname}</code> <code>{nr}</code> <code>{nr3}</code> (mit Nullen) <code>{kw}</code> <code>{jahr}</code> <code>{von}</code> <code>{bis}</code> <code>{bereich}</code><br>Beispiel: <strong id="fnex"></strong></p>
+      <div class="hint">Bausteine: <code>{vorname}</code> <code>{nachname}</code> <code>{nr}</code> <code>{nr3}</code> <code>{kw}</code> <code>{jahr}</code> <code>{von}</code> <code>{bis}</code> <code>{bereich}</code><br>Beispiel: <strong id="fnex"></strong></div>
       <label>Nach dem Unterschreiben noch bearbeitbar (Tage)</label><input type="number" name="bearbeitbarTage" min="1" max="3650" value="${s.bearbeitbarTage}">
-      <h3 class="mt2">Vorausgefüllter Text je Tagesart</h3><p class="muted"><code>{name}</code> wird beim Feiertag durch den Namen ersetzt.</p>
+      <h3 class="mt2">Vorausgefüllter Text je Tagesart</h3><div class="hint"><code>{name}</code> wird beim Feiertag durch den Namen ersetzt.</div>
       ${Object.entries(T).map(([k, t]) => `<label>${t}</label><input type="text" name="vb_${k}" value="${esc(vb[k])}">`).join('')}
       <h3 class="mt2">Rechtschreibprüfung</h3>
-      <label class="inline"><input type="checkbox" name="ltAus" ${s.ltAus ? 'checked' : ''}> Prüfung ausschalten</label>
       <label>Adresse des LanguageTool-Dienstes</label><input type="text" name="ltUrl" value="${esc(s.ltUrl)}" placeholder="leer = eigener Dienst auf dem Server">
+      <div class="hint">Leer lassen. Dann bleibt alles auf deinem Server. Abschalten geht unter „Funktionen sperren“.</div>
       <div id="gerr"></div><div class="actions"><button class="primary">Speichern</button></div></form></div>`;
     const ex = () => {
-      const v = { vorname: S.user.vorname || 'Max', nachname: S.user.nachname || 'Muster', nr: '7', nr3: '007', kw: '42', jahr: '2026', von: '12.10.2026', bis: '18.10.2026', bereich: 'AW' };
+      const v = { vorname: 'Carlo', nachname: 'Witting', nr: '7', nr3: '007', kw: '42', jahr: '2026', von: '12.10.2026', bis: '18.10.2026', bereich: 'AW' };
       $('#fnex').textContent = $('#fn').value.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m).replace(/\s+/g, '_') + '.pdf';
     };
     $('#fn').oninput = ex; ex();
@@ -696,11 +1041,11 @@
       const b = {
         bereiche: f.bereiche.value.split('\n').map((x) => x.trim()).filter(Boolean), bundesland: f.bundesland.value,
         arbeitstage: fd.getAll('arbeitstage').map(Number), dateiname: f.dateiname.value, bearbeitbarTage: f.bearbeitbarTage.value,
-        ltAus: f.ltAus.checked, ltUrl: f.ltUrl.value, vorbelegung: Object.fromEntries(Object.keys(T).map((k) => [k, f['vb_' + k].value]))
+        ltUrl: f.ltUrl.value, vorbelegung: Object.fromEntries(Object.keys(T).map((k) => [k, f['vb_' + k].value]))
       };
       try {
         const r = (await api('POST', '/api/admin/settings', { settings: b })).settings;
-        Object.assign(S.settings, { bereiche: r.bereiche, bundesland: r.bundesland, arbeitstage: r.arbeitstage, bearbeitbarTage: r.bearbeitbarTage, ltAus: r.ltAus, vorbelegung: r.vorbelegung });
+        Object.assign(S.settings, { bereiche: r.bereiche, arbeitstage: r.arbeitstage, bearbeitbarTage: r.bearbeitbarTage, vorbelegung: r.vorbelegung });
         errBox($('#gerr'), 'Gespeichert.', 'ok');
       } catch (x) { errBox($('#gerr'), x.message); }
     };

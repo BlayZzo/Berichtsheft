@@ -1,6 +1,7 @@
 'use strict';
 /*
  * Berichtsheft - digitaler Ausbildungsnachweis
+ * Privates Hilfsprogramm. Nicht offiziell und ohne Verbindung zur Handelskammer Bremen oder zu Ausbildungsbetrieben.
  * Braucht nur Node.js 20 oder neuer, keine Zusatzpakete.
  * Alle Daten liegen in BH_DATA (auf dem Server /var/lib/berichtsheft/data), nie im Programmordner.
  */
@@ -11,8 +12,9 @@ const crypto = require('crypto');
 const W = require('./lib/weeks');
 const { fill, fitDay } = require('./lib/fill');
 const { decodePng } = require('./lib/png');
+const { ideas } = require('./lib/ideen');
 
-const VERSION = '2.0.0';
+const VERSION = '3.0.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -36,6 +38,17 @@ const SECURITY_HEADERS = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
 };
 
+/* Funktionen, die der Admin voruebergehend sperren kann */
+const FUNKTIONEN = {
+  login: 'Anmelden (für alle außer Admins)',
+  neu: 'Neue Berichte anlegen',
+  bearbeiten: 'Berichte schreiben und speichern',
+  pruefung: 'Rechtschreibprüfung',
+  ideen: 'Ideen-Vorschläge',
+  unterschreiben: 'Unterschreiben',
+  pdf: 'PDF herunterladen'
+};
+
 /* ---------- Daten ---------- */
 
 const DEFAULT_SETTINGS = {
@@ -45,7 +58,8 @@ const DEFAULT_SETTINGS = {
   dateiname: 'Berichtsheft_{nachname}_NR{nr}',
   bearbeitbarTage: 90,
   ltUrl: '',
-  ltAus: false,
+  gesperrt: {},
+  sperrText: 'Diese Funktion ist gerade wegen Wartung gesperrt. Bitte später noch einmal versuchen.',
   vorbelegung: {
     betrieb: '',
     schule: '',
@@ -78,10 +92,7 @@ const db = readJson(DB_FILE, { users: {}, reports: {}, settings: {} });
 db.users ||= {}; db.reports ||= {};
 db.settings = merge(DEFAULT_SETTINGS, db.settings || {});
 let saveTimer = null;
-function save() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => writeJson(DB_FILE, db), 50);
-}
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => writeJson(DB_FILE, db), 50); }
 function saveNow() { clearTimeout(saveTimer); writeJson(DB_FILE, db); }
 process.on('SIGTERM', () => { saveNow(); saveSessions(); process.exit(0); });
 process.on('SIGINT', () => { saveNow(); saveSessions(); process.exit(0); });
@@ -96,12 +107,19 @@ function checkPw(user, pw) {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'));
 }
 function pwProblem(pw) {
-  if (typeof pw !== 'string' || pw.length < 10) return 'Das Passwort braucht mindestens 10 Zeichen.';
+  if (typeof pw !== 'string' || pw.length < 8) return 'Das Passwort braucht mindestens 8 Zeichen.';
   if (pw.length > 200) return 'Das Passwort ist zu lang.';
   return '';
 }
+/* Kurzes Start-Passwort ohne verwechselbare Zeichen, z. B. "kp4m-x7ra" */
 function tempPassword() {
-  const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const abc = 'abcdefghkmnpqrstuvwxyz23456789';
+  let s = '';
+  for (const b of crypto.randomBytes(8)) s += abc[b % abc.length];
+  return s.slice(0, 4) + '-' + s.slice(4);
+}
+function setupCodeNew() {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = '';
   for (const b of crypto.randomBytes(12)) s += abc[b % abc.length];
   return s;
@@ -117,7 +135,7 @@ function cookies(req) {
   const out = {};
   for (const part of String(req.headers.cookie || '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i > 0) { try { out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); } catch {} }
   }
   return out;
 }
@@ -130,17 +148,19 @@ function currentUser(req) {
   if (s.exp < now || now - s.last > IDLE_HOURS * 3600e3) { sessions.delete(key); saveSessionsSoon(); return null; }
   const u = db.users[s.userId];
   if (!u || !u.active) { sessions.delete(key); saveSessionsSoon(); return null; }
-  if (now - s.last > 60e3) { s.last = now; saveSessionsSoon(); }
+  if (now - s.last > 60e3) { s.last = now; saveSessionsSoon(); u.lastSeen = new Date(now).toISOString(); save(); }
   return u;
 }
 function startSession(res, user) {
   const t = crypto.randomBytes(32).toString('base64url');
   sessions.set(tokenKey(t), { userId: user.id, exp: Date.now() + SESSION_DAYS * 864e5, last: Date.now() });
   saveSessionsSoon();
+  user.lastSeen = new Date().toISOString();
   res.setHeader('Set-Cookie', `bh_sid=${t}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}${SECURE}`);
 }
 function endSessions(userId, exceptReq) {
-  const keep = exceptReq && cookies(exceptReq).bh_sid ? tokenKey(cookies(exceptReq).bh_sid) : null;
+  const c = exceptReq && cookies(exceptReq).bh_sid;
+  const keep = c ? tokenKey(c) : null;
   for (const [k, s] of sessions) if (s.userId === userId && k !== keep) sessions.delete(k);
   saveSessionsSoon();
 }
@@ -168,30 +188,38 @@ function setupCode() {
   if (!needsSetup()) return null;
   let code = '';
   try { code = fs.readFileSync(SETUP_FILE, 'utf8').trim(); } catch {}
-  if (!code) {
-    code = tempPassword();
-    fs.writeFileSync(SETUP_FILE, code + '\n', { mode: 0o600 });
-  }
+  if (!code) { code = setupCodeNew(); fs.writeFileSync(SETUP_FILE, code + '\n', { mode: 0o600 }); }
   return code;
 }
 
 /* ---------- Hilfen ---------- */
 
+class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+const fail = (status, msg) => { throw new HttpError(status, msg); };
+
 const str = (v, max = 200) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, max).trim();
 const text = (v, max = 4000) => String(v ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, max);
 const num = (v, min, max, def) => { const x = Number(String(v).replace(',', '.')); return Number.isFinite(x) ? Math.min(max, Math.max(min, x)) : def; };
 const heute = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
+const newId = () => crypto.randomBytes(6).toString('base64url');
+
+function gesperrt(key, user) {
+  if (user && user.role === 'admin' && key === 'login') return;
+  if (db.settings.gesperrt && db.settings.gesperrt[key]) fail(503, `${FUNKTIONEN[key]}: ${db.settings.sperrText}`);
+}
 
 function publicUser(u) {
   if (!u) return null;
   return {
-    id: u.id, username: u.username, role: u.role, mustChange: !!u.mustChange,
-    vorname: u.vorname, nachname: u.nachname, beginn: u.beginn, ende: u.ende, bereich: u.bereich || '',
-    schultage: u.schultage || [], stunden: u.stunden, schulstunden: u.schulstunden, hasSignature: !!u.sig,
-    woerterbuch: u.woerterbuch || [], active: u.active
+    id: u.id, username: u.username, role: u.role, mustChange: !!u.mustChange, created: u.created,
+    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', standort: u.standort || '', lehrjahr: u.lehrjahr || '',
+    bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
+    hasSignature: !!u.sig, woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
+    tutorialDone: !!u.tutorialDone, active: u.active
   };
 }
-const profileMissing = (u) => ['vorname', 'nachname', 'beginn'].filter((k) => !u[k]);
+/* Pflichtangaben: Azubis brauchen Name, Firma, Standort und Lehrjahr */
+const profileMissing = (u) => (u.role === 'admin' ? [] : ['vorname', 'nachname', 'firma', 'standort', 'lehrjahr'].filter((k) => !u[k]));
 
 function deadlineOf(r) {
   if (!r.firstSignedAt) return null;
@@ -200,7 +228,7 @@ function deadlineOf(r) {
   return new Date(Math.max(base, extra)).toISOString();
 }
 const canEdit = (r) => r.status !== 'abgeschlossen' || Date.now() <= new Date(deadlineOf(r)).getTime();
-/* Wie im Papier-Formular: Woche von Montag bis Sonntag */
+/* Wie im Papier-Formular: Woche immer von Montag bis Sonntag */
 const lastDay = (r) => W.addDays(r.weekStart, 6);
 const deKurz = (s) => W.de(s).replace(/\.(\d{2})(\d{2})$/, '.$2');
 
@@ -274,11 +302,11 @@ function buildPdf(r, { blank = false } = {}) {
 }
 
 function reportView(r) {
+  const iso = W.isoWeek(r.weekStart);
   return {
-    id: r.id, nr: r.nr, weekStart: r.weekStart, bereich: r.bereich, ausbildungsjahr: r.ausbildungsjahr, days: r.days,
+    id: r.id, nr: r.nr, weekStart: r.weekStart, bis: lastDay(r), bereich: r.bereich, ausbildungsjahr: r.ausbildungsjahr, days: r.days,
     status: r.status, sigDate: r.sigDate, signedAt: r.signedAt, firstSignedAt: r.firstSignedAt, korrigiertAm: r.korrigiertAm,
-    deadline: deadlineOf(r), editable: canEdit(r), file: fileName(r), updated: r.updated,
-    kw: W.isoWeek(r.weekStart).week, jahr: W.isoWeek(r.weekStart).year, bis: lastDay(r),
+    deadline: deadlineOf(r), editable: canEdit(r), file: fileName(r), updated: r.updated, kw: iso.week, jahr: iso.year,
     holidays: r.days.map((d) => W.holidayName(d.date, db.settings.bundesland)),
     fits: fitsOf(r).map((f) => (f ? { fits: f.fits, over: f.over || 0 } : null))
   };
@@ -286,14 +314,14 @@ function reportView(r) {
 function listItem(r) {
   return {
     id: r.id, nr: r.nr, weekStart: r.weekStart, bis: lastDay(r), bereich: r.bereich, status: r.status, signedAt: r.signedAt,
-    updated: r.updated, deadline: deadlineOf(r), editable: canEdit(r), file: fileName(r), kw: W.isoWeek(r.weekStart).week
+    updated: r.updated, deadline: deadlineOf(r), editable: canEdit(r), file: fileName(r), kw: W.isoWeek(r.weekStart).week,
+    filled: r.days.filter((d) => d.text.trim()).length, total: r.days.length
   };
 }
 
 /* ---------- Rechtschreibung (LanguageTool) ---------- */
 
 async function spellcheck(user, input) {
-  if (db.settings.ltAus) return { off: true, matches: [] };
   const base = (db.settings.ltUrl || LT_DEFAULT).replace(/\/+$/, '');
   const body = new URLSearchParams({ text: input, language: 'de-DE' });
   const ctrl = new AbortController();
@@ -303,7 +331,7 @@ async function spellcheck(user, input) {
     const res = await fetch(base + '/v2/check', { method: 'POST', body, signal: ctrl.signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     data = await res.json();
-  } catch (e) {
+  } catch {
     return { error: 'Die Rechtschreibprüfung ist gerade nicht erreichbar.', matches: [] };
   } finally { clearTimeout(timer); }
   const dict = new Set((user.woerterbuch || []).map((w) => w.toLowerCase()));
@@ -311,16 +339,13 @@ async function spellcheck(user, input) {
     offset: m.offset, length: m.length, message: m.message, shortMessage: m.shortMessage || '',
     word: input.substr(m.offset, m.length),
     replacements: (m.replacements || []).slice(0, 5).map((x) => x.value),
-    typo: m.rule && m.rule.issueType === 'misspelling',
+    typo: !!(m.rule && m.rule.issueType === 'misspelling'),
     rule: m.rule ? m.rule.id : ''
   })).filter((m) => !(m.typo && dict.has(m.word.toLowerCase())));
   return { matches };
 }
 
 /* ---------- HTTP ---------- */
-
-class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-const fail = (status, msg) => { throw new HttpError(status, msg); };
 
 function send(res, status, body, type = 'application/json; charset=utf-8', extra = {}) {
   const data = Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
@@ -341,7 +366,7 @@ function readBody(req, limit = 1.5e6) {
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
 function serveStatic(req, res, pathname) {
-  let rel = pathname === '/' ? '/index.html' : pathname;
+  const rel = pathname === '/' ? '/index.html' : pathname;
   const file = path.join(PUBLIC, path.normalize(rel).replace(/^([/\\])+/, ''));
   if (!file.startsWith(PUBLIC + path.sep)) return send(res, 404, 'Nicht gefunden', 'text/plain; charset=utf-8');
   fs.readFile(file, (err, data) => {
@@ -351,12 +376,6 @@ function serveStatic(req, res, pathname) {
     }
     send(res, 200, data, MIME[path.extname(file)] || 'application/octet-stream', { 'Cache-Control': 'no-cache' });
   });
-}
-
-function weekParam(v) {
-  const s = str(v, 10);
-  if (!W.isDate(s)) fail(400, 'Ungültiges Datum.');
-  return W.mondayOf(s);
 }
 
 function cleanDays(input, weekStart) {
@@ -370,18 +389,32 @@ function cleanDays(input, weekStart) {
     return { date, type, hours: num(d.hours, 0, 24, 0), text: text(d.text) };
   }).sort((a, b) => a.date.localeCompare(b.date));
 }
+function cleanOrte(list) {
+  if (!Array.isArray(list)) fail(400, 'Ungültige Arbeitsorte.');
+  return list.slice(0, 50).map((o) => ({
+    id: /^[A-Za-z0-9_-]{4,20}$/.test(o.id || '') ? o.id : newId(),
+    titel: str(o.titel, 60), adresse: str(o.adresse, 120), label: str(o.label, 40), person: str(o.person, 80)
+  })).filter((o) => o.titel || o.adresse || o.label || o.person);
+}
+function cleanBausteine(list) {
+  if (!Array.isArray(list)) fail(400, 'Ungültige Textbausteine.');
+  const seen = new Set();
+  return list.slice(0, 200).map((b) => ({ id: /^[A-Za-z0-9_-]{4,20}$/.test(b.id || '') ? b.id : newId(), text: str(b.text, 300) }))
+    .filter((b) => b.text && !seen.has(b.text) && seen.add(b.text));
+}
 
-/* Routen: [Methode, Pfad, Recht, Funktion]. Recht: null = offen, 'user', 'admin' */
+/* Routen. Recht: null = offen, 'user' = angemeldet, 'azubi' = eigenes Berichtsheft, 'admin' */
 const routes = [];
 const route = (m, p, auth, fn) => routes.push({ m, p, auth, fn });
 
 route('GET', '/api/health', null, () => ({ ok: true, version: VERSION }));
 
 route('GET', '/api/state', null, (ctx) => ({
-  setup: needsSetup(), user: publicUser(ctx.user), version: VERSION,
+  setup: needsSetup(), user: publicUser(ctx.user), version: VERSION, missing: ctx.user ? profileMissing(ctx.user) : [],
   settings: ctx.user ? {
-    bundesland: db.settings.bundesland, arbeitstage: db.settings.arbeitstage, typen: W.TYPEN, vorbelegung: db.settings.vorbelegung,
-    bearbeitbarTage: db.settings.bearbeitbarTage, bereiche: db.settings.bereiche, ltAus: db.settings.ltAus
+    arbeitstage: db.settings.arbeitstage, typen: W.TYPEN, vorbelegung: db.settings.vorbelegung,
+    bearbeitbarTage: db.settings.bearbeitbarTage, bereiche: db.settings.bereiche,
+    gesperrt: db.settings.gesperrt || {}, sperrText: db.settings.sperrText, funktionen: FUNKTIONEN
   } : null
 }));
 
@@ -390,13 +423,13 @@ route('POST', '/api/setup', null, (ctx) => {
   const ip = 'setup:' + ctx.ip;
   if (limited(ip)) fail(429, 'Zu viele Versuche. Bitte 15 Minuten warten.');
   const code = setupCode(), b = ctx.body;
-  if (!code || typeof b.code !== 'string' || b.code.trim().length !== code.length || !crypto.timingSafeEqual(Buffer.from(b.code.trim()), Buffer.from(code))) { failed(ip); fail(403, 'Der Einrichtungs-Code stimmt nicht.'); }
+  const given = String(b.code || '').trim().toUpperCase();
+  if (!code || given.length !== code.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(code))) { failed(ip); fail(403, 'Der Einrichtungs-Code stimmt nicht.'); }
   const username = str(b.username, 40).toLowerCase();
-  if (!/^[a-z0-9._-]{3,40}$/.test(username)) fail(400, 'Benutzername: 3 bis 40 Zeichen, nur Buchstaben, Zahlen, Punkt, Minus und Unterstrich.');
+  if (!/^[a-z0-9._-]{3,40}$/.test(username)) fail(400, 'Benutzername: 3 bis 40 Zeichen, nur Kleinbuchstaben, Zahlen, Punkt, Minus und Unterstrich.');
   const p = pwProblem(b.password); if (p) fail(400, p);
   const id = crypto.randomUUID();
-  const { salt, hash } = hashPw(b.password);
-  db.users[id] = { id, username, salt, hash, role: 'admin', active: true, created: new Date().toISOString(), vorname: str(b.vorname, 60), nachname: str(b.nachname, 60), stunden: 7.6, schulstunden: 7.6, schultage: [] };
+  db.users[id] = { id, username, ...hashPw(b.password), role: 'admin', active: true, created: new Date().toISOString(), vorname: 'Admin', nachname: '' };
   saveNow();
   try { fs.unlinkSync(SETUP_FILE); } catch {}
   startSession(ctx.res, db.users[id]);
@@ -408,9 +441,11 @@ route('POST', '/api/login', null, (ctx) => {
   const kIp = 'ip:' + ctx.ip, kUser = 'u:' + username;
   if (limited(kIp) || limited(kUser)) fail(429, 'Zu viele Fehlversuche. Bitte 15 Minuten warten.');
   const u = Object.values(db.users).find((x) => x.username === username);
-  const ok = u && u.active && checkPw(u, String(ctx.body.password || ''));
+  const ok = u && checkPw(u, String(ctx.body.password || ''));
   if (!u) hashPw('x'); /* gleiche Rechenzeit, damit man Benutzernamen nicht erraten kann */
   if (!ok) { failed(kIp); failed(kUser); fail(401, 'Benutzername oder Passwort falsch.'); }
+  if (!u.active) fail(403, 'Dieses Konto ist gesperrt. Bitte beim Admin melden.');
+  gesperrt('login', u);
   attempts.delete(kUser);
   u.lastLogin = new Date().toISOString(); save();
   startSession(ctx.res, u);
@@ -436,33 +471,34 @@ route('POST', '/api/password', 'user', (ctx) => {
 
 route('POST', '/api/me', 'user', (ctx) => {
   const u = ctx.user, b = ctx.body;
-  if ('vorname' in b) u.vorname = str(b.vorname, 60);
-  if ('nachname' in b) u.nachname = str(b.nachname, 60);
-  if ('bereich' in b) u.bereich = str(b.bereich, 80);
-  if ('beginn' in b) { const v = str(b.beginn, 10); if (v && !W.isDate(v)) fail(400, 'Ausbildungsbeginn ungültig.'); u.beginn = v; }
-  if ('ende' in b) { const v = str(b.ende, 10); if (v && !W.isDate(v)) fail(400, 'Ausbildungsende ungültig.'); u.ende = v; }
+  for (const k of ['vorname', 'nachname']) if (k in b) { const v = str(b[k], 60); if (!v && u.role !== 'admin') fail(400, 'Vorname und Nachname sind Pflichtfelder.'); u[k] = v; }
+  for (const k of ['firma', 'standort']) if (k in b) { const v = str(b[k], 120); if (!v && u.role !== 'admin') fail(400, 'Firma und Standort sind Pflichtfelder.'); u[k] = v; }
+  if ('lehrjahr' in b) u.lehrjahr = Math.round(num(b.lehrjahr, 1, 4, 1));
+  if ('bereich' in b) u.bereich = str(b.bereich, 40);
   if ('schultage' in b) u.schultage = (Array.isArray(b.schultage) ? b.schultage : []).map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).slice(0, 7);
-  if ('stunden' in b) u.stunden = num(b.stunden, 0, 24, 8);
-  if ('schulstunden' in b) u.schulstunden = num(b.schulstunden, 0, 24, 8);
+  if ('stunden' in b) u.stunden = num(b.stunden, 0, 24, 7.6);
+  if ('schulstunden' in b) u.schulstunden = num(b.schulstunden, 0, 24, 7.6);
+  if ('orte' in b) u.orte = cleanOrte(b.orte);
+  if ('bausteine' in b) u.bausteine = cleanBausteine(b.bausteine);
+  if ('tutorialDone' in b) u.tutorialDone = !!b.tutorialDone;
   save();
-  return { user: publicUser(u) };
+  return { user: publicUser(u), missing: profileMissing(u) };
 });
 
-route('POST', '/api/me/signature', 'user', (ctx) => {
+route('POST', '/api/me/signature', 'azubi', (ctx) => {
   const u = ctx.user;
   if (ctx.body.png === null) { u.sig = ''; save(); return { user: publicUser(u) }; }
   try { u.sig = saveSignature(ctx.body.png); } catch (e) { fail(400, e.message); }
   save();
   return { user: publicUser(u) };
 });
-route('GET', '/api/me/signature', 'user', (ctx) => {
-  if (!ctx.user.sig) fail(404, 'Keine Unterschrift hinterlegt.');
-  const file = path.join(SIG_DIR, ctx.user.sig + '.png');
-  if (!fs.existsSync(file)) fail(404, 'Keine Unterschrift hinterlegt.');
+route('GET', '/api/me/signature', 'azubi', (ctx) => {
+  const file = ctx.user.sig && path.join(SIG_DIR, ctx.user.sig + '.png');
+  if (!file || !fs.existsSync(file)) fail(404, 'Keine Unterschrift hinterlegt.');
   return { raw: fs.readFileSync(file), type: 'image/png' };
 });
 
-route('POST', '/api/me/dict', 'user', (ctx) => {
+route('POST', '/api/me/dict', 'azubi', (ctx) => {
   const u = ctx.user;
   u.woerterbuch ||= [];
   const add = str(ctx.body.add, 60), del = str(ctx.body.remove, 60);
@@ -472,7 +508,8 @@ route('POST', '/api/me/dict', 'user', (ctx) => {
   return { woerterbuch: u.woerterbuch };
 });
 
-route('POST', '/api/check', 'user', async (ctx) => {
+route('POST', '/api/check', 'azubi', async (ctx) => {
+  gesperrt('pruefung');
   const t = text(ctx.body.text, 8000);
   if (!t.trim()) return { matches: [] };
   return spellcheck(ctx.user, t);
@@ -481,79 +518,92 @@ route('POST', '/api/check', 'user', async (ctx) => {
 /* ---- Berichte ---- */
 
 const ownReports = (uid) => Object.values(db.reports).filter((r) => r.userId === uid);
-function findReport(ctx, id, write) {
+function findReport(ctx, id) {
   const r = db.reports[str(id, 40)];
-  if (!r) fail(404, 'Bericht nicht gefunden.');
-  if (r.userId !== ctx.user.id && !(ctx.user.role === 'admin' && !write)) fail(404, 'Bericht nicht gefunden.');
+  if (!r || r.userId !== ctx.user.id) fail(404, 'Bericht nicht gefunden.');
   return r;
 }
 
-/* Vorschlag fuer einen neuen Bericht: Woche nach dem letzten Bericht, Nummer = hoechste + 1 */
-route('GET', '/api/report/next', 'user', (ctx) => {
+/* Vorschlag fuer einen neuen Bericht: diese Woche (oder die nach dem letzten Bericht), Nummer = hoechste + 1 */
+route('GET', '/api/report/next', 'azubi', (ctx) => {
   const u = ctx.user, list = ownReports(u.id);
   const thisWeek = W.mondayOf(heute());
-  let weekStart = thisWeek, nr = 1;
-  if (list.length) {
-    const latest = list.reduce((a, b) => (a.weekStart > b.weekStart ? a : b));
-    weekStart = W.addDays(latest.weekStart, 7);
-    nr = Math.max(...list.map((r) => Number(r.nr) || 0)) + 1;
-  } else if (W.isDate(u.beginn)) {
-    nr = Math.max(1, W.reportNr(u.beginn, weekStart));
-  }
-  return { weekStart, nr, bereich: u.bereich || db.settings.bereiche[0] || '', missing: profileMissing(u), hasSignature: !!u.sig };
+  const taken = new Set(list.map((r) => r.weekStart));
+  let weekStart = thisWeek;
+  if (taken.has(weekStart)) { while (taken.has(weekStart)) weekStart = W.addDays(weekStart, 7); }
+  const nr = list.length ? Math.max(...list.map((r) => Number(r.nr) || 0)) + 1 : 1;
+  return { weekStart, thisWeek, nr, bereich: u.bereich || db.settings.bereiche[0] || '', taken: [...taken], hasSignature: !!u.sig };
 });
 
 /* Ganze Woche Berufsschule (z. B. Bereich "BBS"): alle normalen Tage als Schultage vorbelegen */
 function schoolWeek(days, bereich) {
   if (!/\b(BBS|Berufsschule|Schule)\b/i.test(bereich)) return days;
-  return days.map((d) => (d.type === 'betrieb' ? { ...d, type: 'schule', text: W.fillText('schule', db.settings, ''), hours: d.hours } : d));
+  return days.map((d) => (d.type === 'betrieb' ? { ...d, type: 'schule', text: W.fillText('schule', db.settings, '') } : d));
 }
 
-route('POST', '/api/report/new', 'user', (ctx) => {
+route('POST', '/api/report/new', 'azubi', (ctx) => {
+  gesperrt('neu');
   const u = ctx.user, b = ctx.body;
-  if (profileMissing(u).length) fail(400, 'Bitte zuerst in den Einstellungen Vorname, Nachname und Ausbildungsbeginn eintragen.');
-  const ws = W.mondayOf(str(b.weekStart, 10) || heute());
-  if (!W.isDate(ws)) fail(400, 'Ungültige Woche.');
+  if (profileMissing(u).length) fail(400, 'Bitte zuerst in den Einstellungen Name, Firma, Standort und Lehrjahr eintragen.');
+  const d = str(b.weekStart, 10) || heute();
+  if (!W.isDate(d)) fail(400, 'Bitte ein gültiges Datum wählen.');
+  const ws = W.mondayOf(d);
   const dup = ownReports(u.id).find((r) => r.weekStart === ws);
   if (dup) return { id: dup.id, existed: true };
   const auto = W.buildWeek(u, db.settings, ws);
+  const bereich = str(b.bereich, 40);
   const id = crypto.randomBytes(9).toString('base64url');
   db.reports[id] = {
-    id, userId: u.id, weekStart: ws, nr: Math.round(num(b.nr, 1, 9999, 1)), bereich: str(b.bereich, 80),
-    ausbildungsjahr: auto.ausbildungsjahr, days: schoolWeek(auto.days, str(b.bereich, 80)), status: 'entwurf',
+    id, userId: u.id, weekStart: ws, nr: Math.round(num(b.nr, 1, 9999, 1)), bereich,
+    ausbildungsjahr: Number(u.lehrjahr) || 1, days: schoolWeek(auto.days, bereich), status: 'entwurf',
     created: new Date().toISOString(), updated: new Date().toISOString(), history: []
   };
   saveNow();
   return { id };
 });
 
-route('GET', '/api/reports', 'user', (ctx) => {
-  const uid = ctx.user.role === 'admin' && ctx.query.get('user') ? ctx.query.get('user') : ctx.user.id;
-  if (!db.users[uid]) fail(404, 'Unbekanntes Konto.');
-  return { reports: ownReports(uid).sort((a, b) => b.weekStart.localeCompare(a.weekStart)).map(listItem) };
-});
+route('GET', '/api/reports', 'azubi', (ctx) => ({
+  reports: ownReports(ctx.user.id).sort((a, b) => b.weekStart.localeCompare(a.weekStart)).map(listItem)
+}));
 
-route('GET', '/api/report', 'user', (ctx) => ({ report: reportView(findReport(ctx, ctx.query.get('id'))) }));
+route('GET', '/api/report', 'azubi', (ctx) => ({ report: reportView(findReport(ctx, ctx.query.get('id'))) }));
 
-route('POST', '/api/report/save', 'user', (ctx) => {
-  const r = findReport(ctx, ctx.body.id, true), b = ctx.body;
+route('POST', '/api/report/save', 'azubi', (ctx) => {
+  gesperrt('bearbeiten');
+  const r = findReport(ctx, ctx.body.id), b = ctx.body;
   if (r.status === 'abgeschlossen') fail(409, 'Dieser Bericht ist unterschrieben. Zum Ändern zuerst „Nachträglich bearbeiten“ wählen.');
   if ('nr' in b) r.nr = Math.round(num(b.nr, 1, 9999, r.nr));
-  if ('bereich' in b) r.bereich = str(b.bereich, 80);
+  if ('bereich' in b) r.bereich = str(b.bereich, 40);
+  if ('ausbildungsjahr' in b) r.ausbildungsjahr = Math.round(num(b.ausbildungsjahr, 1, 4, r.ausbildungsjahr));
   if ('days' in b) r.days = cleanDays(b.days, r.weekStart);
   r.updated = new Date().toISOString();
   save();
   return { report: reportView(r) };
 });
 
-route('POST', '/api/report/finish', 'user', (ctx) => {
-  const u = ctx.user, r = findReport(ctx, ctx.body.id, true);
+route('POST', '/api/ideas', 'azubi', (ctx) => {
+  gesperrt('ideen');
+  const r = findReport(ctx, ctx.body.id);
+  const i = Math.round(num(ctx.body.day, 0, 6, 0));
+  const day = r.days[i];
+  if (!day) fail(400, 'Unbekannter Tag.');
+  const current = text(ctx.body.text ?? day.text, 4000);
+  /* Die anderen Tage dieser Woche (so wie gerade auf dem Bildschirm) bestimmen, was passt, und werden nicht doppelt vorgeschlagen */
+  const week = Array.isArray(ctx.body.week) ? ctx.body.week.slice(0, 7).map((t) => text(t, 4000)) : r.days.filter((_, k) => k !== i).map((d) => d.text);
+  const history = ownReports(ctx.user.id).filter((x) => x.id !== r.id).sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+    .flatMap((x) => x.days.map((d) => ({ text: d.text, type: d.type, bereich: x.bereich, nr: x.nr })));
+  return { ideas: ideas({ text: current, type: day.type, bereich: r.bereich, week, history }) };
+});
+
+route('POST', '/api/report/finish', 'azubi', (ctx) => {
+  gesperrt('unterschreiben');
+  const u = ctx.user, r = findReport(ctx, ctx.body.id);
   if (r.status === 'abgeschlossen') fail(409, 'Der Bericht ist schon unterschrieben.');
   if (!u.sig || !loadSignature(u.sig)) fail(400, 'Bitte zuerst in den Einstellungen deine Unterschrift hinterlegen.');
   const date = str(ctx.body.date, 10) || heute();
   if (!W.isDate(date)) fail(400, 'Bitte ein gültiges Datum für die Unterschrift wählen.');
   if (date > heute()) fail(400, 'Das Datum der Unterschrift darf nicht in der Zukunft liegen.');
-  const empty = r.days.filter((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim().replace(/^Berufsschule:\s*$/, ''));
+  const empty = r.days.filter((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim());
   if (empty.length) fail(400, `Bitte noch ausfüllen: ${empty.map((d) => W.KURZ[W.weekday(d.date)] + ' ' + W.deShort(d.date)).join(', ')}`);
   const long = fitsOf(r).map((f, i) => (f && !f.fits ? W.KURZ[i] : null)).filter(Boolean);
   if (long.length) fail(400, `Zu viel Text für das Feld: ${long.join(', ')}. Bitte etwas kürzen.`);
@@ -570,8 +620,9 @@ route('POST', '/api/report/finish', 'user', (ctx) => {
   return { report: reportView(r) };
 });
 
-route('POST', '/api/report/reopen', 'user', (ctx) => {
-  const r = findReport(ctx, ctx.body.id, true);
+route('POST', '/api/report/reopen', 'azubi', (ctx) => {
+  gesperrt('bearbeiten');
+  const r = findReport(ctx, ctx.body.id);
   if (r.status !== 'abgeschlossen') fail(400, 'Der Bericht ist nicht unterschrieben.');
   if (!canEdit(r)) fail(403, 'Die Frist zum Bearbeiten ist abgelaufen. Der Admin kann sie verlängern.');
   r.history ||= [];
@@ -582,15 +633,16 @@ route('POST', '/api/report/reopen', 'user', (ctx) => {
   return { report: reportView(r) };
 });
 
-route('POST', '/api/report/delete', 'user', (ctx) => {
-  const r = findReport(ctx, ctx.body.id, true);
+route('POST', '/api/report/delete', 'azubi', (ctx) => {
+  const r = findReport(ctx, ctx.body.id);
   if (r.firstSignedAt) fail(400, 'Unterschriebene Berichte können nicht gelöscht werden.');
   delete db.reports[r.id];
   save();
   return { ok: true };
 });
 
-route('GET', '/api/pdf', 'user', (ctx) => {
+route('GET', '/api/pdf', 'azubi', (ctx) => {
+  gesperrt('pdf');
   const r = findReport(ctx, ctx.query.get('id'));
   const { pdf, name } = buildPdf(r);
   const disp = ctx.query.get('view') === '1' ? 'inline' : 'attachment';
@@ -602,64 +654,68 @@ route('GET', '/api/blank', 'user', () => {
   return { raw: pdf, type: 'application/pdf', headers: { 'Content-Disposition': 'inline; filename="Vorlage.pdf"' } };
 });
 
-/* ---- Admin ---- */
+/* ---- Admin: sieht nur die Konten, keine Berichte ---- */
+
+function adminUserView(u) {
+  return {
+    id: u.id, username: u.username, role: u.role, active: u.active, mustChange: !!u.mustChange,
+    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', standort: u.standort || '',
+    created: u.created, lastSeen: u.lastSeen || u.lastLogin || null, reports: ownReports(u.id).length
+  };
+}
 
 route('GET', '/api/admin/users', 'admin', () => ({
-  users: Object.values(db.users).map((u) => ({ ...publicUser(u), lastLogin: u.lastLogin || null, reports: ownReports(u.id).length }))
-    .sort((a, b) => a.username.localeCompare(b.username))
+  users: Object.values(db.users).map(adminUserView).sort((a, b) => (a.role === b.role ? a.username.localeCompare(b.username) : a.role === 'admin' ? -1 : 1))
 }));
 
 route('POST', '/api/admin/users', 'admin', (ctx) => {
-  const b = ctx.body;
-  const username = str(b.username, 40).toLowerCase();
-  if (!/^[a-z0-9._-]{3,40}$/.test(username)) fail(400, 'Benutzername: 3 bis 40 Zeichen, nur Buchstaben, Zahlen, Punkt, Minus und Unterstrich.');
+  const username = str(ctx.body.username, 40).toLowerCase();
+  if (!/^[a-z0-9._-]{3,40}$/.test(username)) fail(400, 'Benutzername: 3 bis 40 Zeichen, nur Kleinbuchstaben, Zahlen, Punkt, Minus und Unterstrich.');
   if (Object.values(db.users).some((u) => u.username === username)) fail(400, 'Diesen Benutzernamen gibt es schon.');
-  if (b.beginn && !W.isDate(str(b.beginn, 10))) fail(400, 'Ausbildungsbeginn ungültig.');
   const pw = tempPassword(), id = crypto.randomUUID();
   db.users[id] = {
-    id, username, ...hashPw(pw), role: b.role === 'admin' ? 'admin' : 'azubi', active: true, mustChange: true, created: new Date().toISOString(),
-    vorname: str(b.vorname, 60), nachname: str(b.nachname, 60), beginn: str(b.beginn, 10), schultage: [], stunden: 7.6, schulstunden: 7.6
+    id, username, ...hashPw(pw), role: ctx.body.role === 'admin' ? 'admin' : 'azubi', active: true, mustChange: true,
+    created: new Date().toISOString(), schultage: [], stunden: 7.6, schulstunden: 7.6
   };
   save();
-  return { user: publicUser(db.users[id]), password: pw };
+  return { user: adminUserView(db.users[id]), password: pw };
 });
 
 route('POST', '/api/admin/user', 'admin', (ctx) => {
   const b = ctx.body, u = db.users[str(b.id, 60)];
   if (!u) fail(404, 'Unbekanntes Konto.');
   const out = {};
-  if (b.resetPassword) { const pw = tempPassword(); Object.assign(u, hashPw(pw)); u.mustChange = true; endSessions(u.id); out.password = pw; }
+  if (b.resetPassword) {
+    if (str(b.confirm, 40).toLowerCase() !== u.username) fail(400, 'Zur Bestätigung bitte den Benutzernamen genau eintippen.');
+    const pw = tempPassword(); Object.assign(u, hashPw(pw)); u.mustChange = true; endSessions(u.id); out.password = pw;
+  }
   if ('active' in b) {
     if (u.id === ctx.user.id && !b.active) fail(400, 'Du kannst dein eigenes Konto nicht sperren.');
     u.active = !!b.active; if (!u.active) endSessions(u.id);
   }
-  if ('role' in b) {
-    if (u.id === ctx.user.id && b.role !== 'admin') fail(400, 'Du kannst dir die Admin-Rechte nicht selbst nehmen.');
-    u.role = b.role === 'admin' ? 'admin' : 'azubi';
+  for (const k of ['vorname', 'nachname']) if (k in b) u[k] = str(b[k], 60);
+  for (const k of ['firma', 'standort']) if (k in b) u[k] = str(b[k], 120);
+  if (b.extendDays) {
+    const until = new Date(Date.now() + num(b.extendDays, 1, 365, 30) * 864e5).toISOString();
+    for (const r of ownReports(u.id)) if (r.firstSignedAt) r.freiBis = until;
+    out.extendedUntil = until;
   }
   save();
-  return { user: publicUser(u), ...out };
+  return { user: adminUserView(u), ...out };
 });
 
-route('POST', '/api/admin/extend', 'admin', (ctx) => {
-  const r = db.reports[str(ctx.body.id, 40)];
-  if (!r) fail(404, 'Bericht nicht gefunden.');
-  r.freiBis = new Date(Date.now() + num(ctx.body.days, 1, 365, 30) * 864e5).toISOString();
-  save();
-  return { deadline: deadlineOf(r) };
-});
-
-route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER }));
+route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER, funktionen: FUNKTIONEN }));
 
 route('POST', '/api/admin/settings', 'admin', (ctx) => {
   const b = ctx.body.settings || {}, s = db.settings;
   if ('bundesland' in b && W.BUNDESLAENDER[b.bundesland]) s.bundesland = b.bundesland;
   if ('arbeitstage' in b) { const t = (Array.isArray(b.arbeitstage) ? b.arbeitstage : []).map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6); s.arbeitstage = [...new Set(t)].sort(); if (!s.arbeitstage.length) s.arbeitstage = [0, 1, 2, 3, 4]; }
-  if ('bereiche' in b) { const l = (Array.isArray(b.bereiche) ? b.bereiche : []).map((x) => str(x, 80)).filter(Boolean).slice(0, 20); if (!l.length) fail(400, 'Mindestens ein Bereich wird gebraucht.'); s.bereiche = [...new Set(l)]; }
+  if ('bereiche' in b) { const l = (Array.isArray(b.bereiche) ? b.bereiche : []).map((x) => str(x, 40)).filter(Boolean).slice(0, 20); if (!l.length) fail(400, 'Mindestens ein Bereich wird gebraucht.'); s.bereiche = [...new Set(l)]; }
   if ('dateiname' in b) { const d = str(b.dateiname, 120); if (!d) fail(400, 'Das Namensschema darf nicht leer sein.'); s.dateiname = d; }
   if ('bearbeitbarTage' in b) s.bearbeitbarTage = num(b.bearbeitbarTage, 1, 3650, 90);
   if ('ltUrl' in b) { const v = str(b.ltUrl, 200); if (v && !/^https?:\/\/[^\s]+$/.test(v)) fail(400, 'Adresse der Rechtschreibprüfung ungültig.'); s.ltUrl = v; }
-  if ('ltAus' in b) s.ltAus = !!b.ltAus;
+  if (b.gesperrt && typeof b.gesperrt === 'object') s.gesperrt = Object.fromEntries(Object.keys(FUNKTIONEN).map((k) => [k, !!b.gesperrt[k]]));
+  if ('sperrText' in b) s.sperrText = str(b.sperrText, 200) || DEFAULT_SETTINGS.sperrText;
   if (b.vorbelegung) for (const k of Object.keys(W.TYPEN)) if (k in b.vorbelegung) s.vorbelegung[k] = str(b.vorbelegung[k], 200);
   save();
   return { settings: s };
@@ -680,7 +736,10 @@ async function handle(req, res) {
     const user = currentUser(req);
     if (r.auth && !user) fail(401, 'Bitte anmelden.');
     if (r.auth === 'admin' && user.role !== 'admin') fail(403, 'Nur für Admins.');
+    if (r.auth === 'azubi' && user.role === 'admin') fail(403, 'Der Admin-Zugang hat kein eigenes Berichtsheft. Bitte mit dem persönlichen Konto anmelden.');
+    if (user && r.auth && user.role !== 'admin' && db.settings.gesperrt && db.settings.gesperrt.login) fail(503, `${FUNKTIONEN.login}: ${db.settings.sperrText}`);
     if (user && user.mustChange && r.auth && pathname !== '/api/password') fail(403, 'Bitte zuerst ein eigenes Passwort festlegen.');
+    if (user && r.auth === 'azubi' && profileMissing(user).length && !['/api/report/next', '/api/reports'].includes(pathname)) fail(403, 'Bitte zuerst deine Angaben vervollständigen.');
     const body = req.method === 'POST' ? await readBody(req) : {};
     const out = await r.fn({ req, res, user, body: body && typeof body === 'object' ? body : {}, query: url.searchParams, ip: clientIp(req) });
     if (out && out.raw) return send(res, 200, out.raw, out.type, out.headers || {});
