@@ -70,7 +70,7 @@ if [ ! -f "$LT_DIR/current/languagetool-server.jar" ]; then
 fi
 chown -R languagetool:languagetool "$LT_DIR"
 # Speicher an den Server anpassen (andere Programme brauchen auch Platz)
-if [ "$MEM_MB" -lt 1500 ]; then LT_MEM=320m; LT_MAX=600M; elif [ "$MEM_MB" -lt 2500 ]; then LT_MEM=384m; LT_MAX=700M; elif [ "$MEM_MB" -lt 5000 ]; then LT_MEM=640m; LT_MAX=1000M; else LT_MEM=1g; LT_MAX=1500M; fi
+if [ "$MEM_MB" -lt 1500 ]; then LT_MEM=512m; LT_MAX=900M; elif [ "$MEM_MB" -lt 2500 ]; then LT_MEM=640m; LT_MAX=1000M; elif [ "$MEM_MB" -lt 5000 ]; then LT_MEM=640m; LT_MAX=1000M; else LT_MEM=1g; LT_MAX=1500M; fi
 cat > /etc/systemd/system/languagetool.service <<EOF
 [Unit]
 Description=LanguageTool Rechtschreibpruefung (nur lokal)

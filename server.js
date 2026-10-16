@@ -15,7 +15,7 @@ const { decodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.3.0';
+const VERSION = '3.3.1';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -382,21 +382,41 @@ function artOf(m) {
 }
 
 let lastLtError = '';
-async function spellcheck(user, input) {
+/* Auf kleinen Servern: Pruefungen nacheinander statt gleichzeitig, und gleiche Texte nicht doppelt pruefen */
+let ltQueue = Promise.resolve();
+const ltCache = new Map();
+async function ltRequest(text, level, timeoutMs = 45000) {
   const base = (db.settings.ltUrl || LT_DEFAULT).replace(/\/+$/, '');
-  const body = new URLSearchParams({ text: input, language: 'de-DE' });
-  if (user.genau) body.set('level', 'picky'); /* genauer Modus: auch Stil, Fuellwoerter, Wiederholungen */
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
+  const key = level + '|' + text;
+  if (ltCache.has(key)) { const v = ltCache.get(key); ltCache.delete(key); ltCache.set(key, v); return v; }
+  const run = async () => {
+    const body = new URLSearchParams({ text, language: 'de-DE' });
+    if (level) body.set('level', level);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(base + '/v2/check', { method: 'POST', body, signal: ctrl.signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      ltCache.set(key, data);
+      if (ltCache.size > 400) ltCache.delete(ltCache.keys().next().value);
+      return data;
+    } catch (e) {
+      lastLtError = `${new Date().toISOString()} ${base}: ${e.name === 'AbortError' ? `keine Antwort nach ${Math.round(timeoutMs / 1000)} s` : e.message}${e.cause ? ' (' + (e.cause.code || e.cause.message) + ')' : ''}`;
+      throw e;
+    } finally { clearTimeout(timer); }
+  };
+  const p = ltQueue.then(run, run);
+  ltQueue = p.catch(() => {});
+  return p;
+}
+/* Nach dem Start einmal "aufwaermen", damit die erste echte Pruefung schnell ist */
+setTimeout(() => ltRequest('Das ist ein kurzer Test zum Aufwärmen.', '', 180000).catch(() => {}), 15000).unref();
+
+async function spellcheck(user, input) {
   let data;
-  try {
-    const res = await fetch(base + '/v2/check', { method: 'POST', body, signal: ctrl.signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    data = await res.json();
-  } catch (e) {
-    lastLtError = `${new Date().toISOString()} ${base}: ${e.name === 'AbortError' ? 'keine Antwort nach 20 s' : e.message}${e.cause ? ' (' + (e.cause.code || e.cause.message) + ')' : ''}`;
-    return { error: 'Die Rechtschreibprüfung ist gerade nicht erreichbar.', matches: [] };
-  } finally { clearTimeout(timer); }
+  try { data = await ltRequest(input, user.genau ? 'picky' : ''); }
+  catch { return { error: 'Die Rechtschreibprüfung ist gerade nicht erreichbar.', matches: [] }; }
   const dict = new Set((user.woerterbuch || []).map((w) => w.toLowerCase()));
   const matches = (data.matches || []).map((m) => ({
     offset: m.offset, length: m.length, message: m.message, shortMessage: m.shortMessage || '',
