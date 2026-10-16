@@ -1,0 +1,8 @@
+# Daten gehoeren nie ins Repository (Konten, Unterschriften, Berichte)
+data/
+data.*/
+secret/
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
