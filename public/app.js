@@ -51,6 +51,15 @@
     return `${txt} (${deDate(iso)})`;
   }
 
+  const mb = (b) => (b / 1048576).toLocaleString('de-DE', { maximumFractionDigits: b < 1048576 ? 2 : 1 });
+  function speicherBar(sp) {
+    if (!sp) return '';
+    const cls = sp.prozent >= 90 ? 'bad' : sp.prozent >= 70 ? 'warn' : '';
+    return `<div class="meter ${cls}"><span data-p="${Math.max(1, sp.prozent)}"></span></div>
+      <div class="muted small-t">${mb(sp.used)} MB von ${mb(sp.quota)} MB belegt (${sp.prozent} %)${sp.eigen ? ' · eigene Grenze' : ''}</div>`;
+  }
+  function fillBars() { $$('.meter span, .progress span').forEach((el) => { el.style.width = el.dataset.p + '%'; }); }
+
   let toastTimer;
   function toast(msg) {
     const t = $('#toast'); t.textContent = msg; t.hidden = false;
@@ -203,7 +212,7 @@
         <div id="err"></div>
         <div class="actions"><button class="primary">Anmelden</button></div>
       </form>
-      <p class="muted mt2"><strong>Neu hier?</strong> Benutzername und Startpasswort bekommst du vom Admin.<br><strong>Passwort vergessen?</strong> Der Admin kann dir ein neues Startpasswort geben.</p>
+      <p class="muted mt2"><strong>Neu hier?</strong> Benutzername und Startpasswort bekommst du vom Admin.<br><strong>Passwort vergessen?</strong> Ein neues Passwort kann nur der Admin erstellen. Bitte dort melden.</p>
       <p class="muted small-t">${esc(HINWEIS)}</p></div>`;
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
@@ -249,7 +258,11 @@
     return `<div class="grid"><div><label>Vorname <span class="req">*</span></label><input type="text" name="vorname" value="${esc(u.vorname)}" required></div>
       <div><label>Nachname <span class="req">*</span></label><input type="text" name="nachname" value="${esc(u.nachname)}" required></div></div>
       <label>Firma <span class="req">*</span></label><input type="text" name="firma" value="${esc(u.firma)}" required placeholder="Name deines Ausbildungsbetriebs">
-      <label>Standort deines Arbeitsplatzes <span class="req">*</span></label><input type="text" name="standort" value="${esc(u.standort)}" required placeholder="z. B. Bremen-Hemelingen">
+      <label>Arbeitsplatz <span class="req">*</span></label><input type="text" name="arbeitsplatz" value="${esc(u.arbeitsplatz)}" required placeholder="z. B. Lehrwerkstatt oder Baustellen-Team">
+      <div class="hint">Kein genauer Ort nötig, nur wo bzw. in welchem Bereich du arbeitest.</div>
+      <label>Wie arbeitest du? <span class="req">*</span></label>
+      <div class="choice"><label class="inline"><input type="radio" name="arbeitsart" value="fest" ${u.arbeitsart === 'fest' ? 'checked' : ''} required> Fester Arbeitsplatz</label>
+      <label class="inline"><input type="radio" name="arbeitsart" value="mobil" ${u.arbeitsart === 'mobil' ? 'checked' : ''}> Mobil (wechselnde Einsatzorte)</label></div>
       <label>Lehrjahr <span class="req">*</span></label><select name="lehrjahr" required>${['', 1, 2, 3, 4].map((n) => `<option value="${n}" ${String(n) === String(u.lehrjahr) ? 'selected' : ''}>${n ? n + '. Lehrjahr' : 'Bitte wählen'}</option>`).join('')}</select>`;
   }
 
@@ -289,14 +302,15 @@
     const q = (t, b, open) => `<details ${open ? 'open' : ''}><summary>${t}</summary><div>${b}</div></details>`;
     app.innerHTML = `<div class="toprow"><a href="#/" class="back">‹ Zurück</a></div><h1>Anleitung</h1><p class="muted">Kurz erklärt, Schritt für Schritt.</p>
       ${S.user && !isAdmin() ? '<div class="actions"><button class="primary" id="tourbtn">Einführung noch einmal ansehen</button></div><div class="mt"></div>' : ''}
-      ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Vorname, Nachname, Firma, Standort und Lehrjahr eintragen.</li></ol>', true)}
+      ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Vorname, Nachname, Firma, Arbeitsplatz (fest oder mobil) und Lehrjahr eintragen.</li></ol>', true)}
       ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
       ${q('Neuen Wochenbericht anlegen', '<ol><li>Auf der Startseite <strong>Neuer Wochenbericht</strong> tippen.</li><li><strong>Diese Woche</strong> oder <strong>Nächste Woche</strong> wählen, oder ein beliebiges Datum. Die Woche wird automatisch auf Montag bis Sonntag gesetzt.</li><li>Die Nummer zählt von selbst weiter. Nur ändern, wenn sie nicht stimmt.</li><li>Ausbildungsbereich wählen, z. B. AW, BBS oder Betrieb.</li></ol>')}
       ${q('Tage ausfüllen', '<ul><li>Alles wird beim Schreiben gespeichert. Du kannst den Bericht jederzeit schließen und später weitermachen, auch auf einem anderen Gerät.</li><li><strong>Einfügen:</strong> setzt einen Arbeitsort oder Textbaustein an der Stelle ein, wo der Cursor steht.</li><li><strong>Markiertes merken:</strong> Text im Feld markieren und tippen. Er wird ein Textbaustein für später.</li><li><strong>Ideen:</strong> Vorschläge aus deinen früheren Berichten und den anderen Tagen der Woche. Einfügen oder kopieren, danach selbst anpassen.</li><li><strong>Rückgängig:</strong> macht das letzte Einfügen, die letzte Idee oder Korrektur wieder rückgängig.</li><li>Über das kleine Auswahlfeld beim Tag stellst du Urlaub, Krank, Feiertag oder Berufsschule ein.</li></ul>')}
-      ${q('Rechtschreibung', '<ul><li>Wird beim Schreiben automatisch geprüft.</li><li>Grüner Knopf = Vorschlag übernehmen. „So lassen“ = Hinweis ausblenden.</li><li>Fachwörter mit „Ins Wörterbuch“ speichern, dann werden sie nicht mehr angestrichen.</li></ul>')}
+      ${q('Rechtschreibung', '<ul><li>Wird beim Schreiben automatisch geprüft. Fehler sind direkt im Text farbig unterstrichen: <span class="dot a-rs"></span>Rechtschreibung, <span class="dot a-gr"></span>Grammatik, <span class="dot a-zs"></span>Zeichensetzung, <span class="dot a-st"></span>Stil.</li><li>Markiertes Wort antippen: grüner Knopf = Vorschlag übernehmen, „So lassen“ = Hinweis ausblenden.</li><li>„Alle Rechtschreibfehler korrigieren“ übernimmt jeweils den ersten Vorschlag. Mit „Rückgängig“ nimmst du es zurück.</li><li>Fachwörter mit „Ins Wörterbuch“ speichern.</li><li>In den Einstellungen kannst du die <strong>genaue Prüfung</strong> einschalten (auch Stil und Füllwörter).</li></ul>')}
+      ${q('Speicherplatz', 'Jedes Konto hat eine Speichergrenze, damit der Server nicht voll wird. Wie viel belegt ist, siehst du in den Einstellungen. Berichte brauchen nur wenige KB. Wenn es voll ist, kann der Admin dir mehr geben.')}
       ${q('Unterschreiben und PDF speichern', '<ol><li>Unter dem Formular das Datum wählen (heute oder ein anderes).</li><li><strong>Prüfen & unterschreiben</strong> tippen. Es wird noch einmal alles geprüft.</li><li><strong>PDF speichern</strong> tippen. Am iPhone „In Dateien sichern“ wählen, am PC mit Chrome/Edge kannst du einen festen Ordner einstellen.</li></ol>')}
       ${q('Später etwas ändern', 'Nach dem Unterschreiben kannst du einen Bericht noch 3 Monate lang über <strong>Nachträglich bearbeiten</strong> ändern. Danach musst du neu unterschreiben, im PDF steht dann klein „korrigiert“.')}
-      ${q('Passwort vergessen?', 'Melde dich beim Admin. Er kann dir ein neues Startpasswort geben. Damit meldest du dich an und legst wieder ein eigenes fest.')}
+      ${q('Passwort vergessen?', 'Ein neues Passwort kann nur der Admin erstellen. Melde dich bei ihm, du bekommst ein neues Startpasswort. Damit meldest du dich an und legst wieder ein eigenes fest.')}
       ${q('Als App auf den Startbildschirm', '<ul><li><strong>iPhone (Safari):</strong> Teilen-Symbol → „Zum Home-Bildschirm“.</li><li><strong>Android (Chrome):</strong> Menü ⋮ → „Zum Startbildschirm hinzufügen“.</li></ul>')}
       <p class="muted mt2">${esc(HINWEIS)}</p>`;
     const t = $('#tourbtn'); if (t) t.onclick = () => tutorial(true);
@@ -313,8 +327,10 @@
     try { let st; [{ reports }, next, st] = await Promise.all([api('GET', '/api/reports'), api('GET', '/api/report/next'), api('GET', '/api/state')]); S = { ...S, ...st }; }
     catch (x) { app.innerHTML = `<div class="msg err">${esc(x.message)}</div>`; return; }
     const sperren = Object.keys(S.settings.funktionen).filter(locked);
-    let html = `<p class="hello"><strong>Hallo ${esc(S.user.vorname)}!</strong> <span class="muted">${esc(S.user.firma)} · ${esc(S.user.standort)}</span></p>`;
+    let html = `<p class="hello"><strong>Hallo ${esc(S.user.vorname)}!</strong> <span class="muted">${esc(S.user.firma)} · ${esc(S.user.arbeitsplatz)} (${S.user.arbeitsart === 'mobil' ? 'mobil' : 'fest'})</span></p>`;
     if (sperren.length) html += `<div class="msg warn">Gerade gesperrt: ${sperren.map((k) => esc(S.settings.funktionen[k])).join(', ')}. ${esc(S.settings.sperrText)}</div>`;
+    const sp = S.user.speicher;
+    if (sp && sp.prozent >= 90) html += `<div class="msg ${sp.prozent >= 100 ? 'err' : 'warn'}">Dein Speicherplatz ist ${sp.prozent >= 100 ? 'voll' : 'fast voll'} (${mb(sp.used)} von ${mb(sp.quota)} MB). Bitte beim Admin mehr Speicher anfragen.</div>`;
     if (!next.hasSignature) html += `<div class="msg info">✍ Noch keine Unterschrift hinterlegt. Das geht in den <a href="#/einstellungen">Einstellungen</a>.</div>`;
     html += `<button class="primary big" id="newbtn" ${locked('neu') ? 'disabled' : ''}><span class="plus">+</span> Neuer Wochenbericht</button>
       <h2 class="mt2">Meine Berichte</h2>
@@ -326,7 +342,7 @@
         ${statusChip(r)}</a>`).join('') || '<div class="card muted">Noch keine Berichte. Tippe oben auf „Neuer Wochenbericht“.</div>'}</div>`;
     app.innerHTML = html;
     /* Fortschrittsbalken per Skript setzen (Inline-Styles sind aus Sicherheitsgruenden gesperrt) */
-    $$('.progress span').forEach((el) => { el.style.width = el.dataset.p + '%'; });
+    fillBars();
     const btn = $('#newbtn'); if (btn) btn.onclick = () => newReport(next);
   }
 
@@ -371,12 +387,12 @@
   }
 
   /* ---------- Bericht (sieht aus wie das Formular) ---------- */
-  const R = { id: null, rep: null, dirty: false, saveTimer: null, saving: null, checks: {}, checkTimers: {}, ignored: new Set(), undo: {}, panel: {} };
+  const R = { id: null, rep: null, dirty: false, saveTimer: null, saving: null, checks: {}, checkTimers: {}, ignored: new Set(), undo: {}, panel: {}, showList: {} };
   const editable = () => R.rep && R.rep.status !== 'abgeschlossen' && !locked('bearbeiten');
   function fillText(type, hol) { return ((S.settings.vorbelegung || {})[type] || '').replace(/\{name\}/g, hol || ''); }
 
   async function viewReport(id) {
-    R.id = id; R.checks = {}; R.dirty = false; R.undo = {}; R.panel = {};
+    R.id = id; R.checks = {}; R.dirty = false; R.undo = {}; R.panel = {}; R.showList = {};
     app.innerHTML = '<p class="loading">Lädt …</p>';
     try { const [rr, st] = await Promise.all([api('GET', '/api/report?id=' + encodeURIComponent(id)), api('GET', '/api/state')]); R.rep = rr.report; S = { ...S, ...st }; }
     catch (x) { app.innerHTML = `<div class="msg err">${esc(x.message)}</div><a href="#/">Zurück</a>`; return; }
@@ -401,10 +417,10 @@
       <div class="sheet-head"><div><div class="sheet-title">Ausbildungsnachweis (Berichtsheft)</div><div class="muted">täglich · KW ${r.kw}/${r.jahr}</div></div>
         <label class="nrbox">Nr.${ed ? `<input type="number" min="1" max="9999" data-f="nr" value="${r.nr}" aria-label="Nummer">` : `<b>${r.nr}</b>`}</label></div>
       <table class="hdr"><tbody>
-        <tr><th>Name des/der Auszubildenden</th><td colspan="3">${esc(u.vorname)} ${esc(u.nachname)}</td></tr>
-        <tr><th>Ausbildungsjahr</th><td>${ed ? `<select data-f="ausbildungsjahr">${[1, 2, 3, 4].map((n) => `<option ${n === Number(r.ausbildungsjahr) ? 'selected' : ''}>${n}</option>`).join('')}</select>` : r.ausbildungsjahr}</td>
-          <th>Ausbildungs&shy;bereich</th><td>${ed ? `<select data-f="bereich">${bereichListe(r.bereich).map((b) => `<option ${b === r.bereich ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` : esc(r.bereich)}</td></tr>
-        <tr><th>Ausbildungswoche vom</th><td>${de(r.weekStart)}</td><th>bis</th><td>${de(r.bis)}</td></tr>
+        <tr><th><span class="lg">Name des/der Auszubildenden</span><span class="sm">Name</span></th><td colspan="3">${esc(u.vorname)} ${esc(u.nachname)}</td></tr>
+        <tr><th><span class="lg">Ausbildungsjahr</span><span class="sm">Lehrjahr</span></th><td>${ed ? `<select data-f="ausbildungsjahr">${[1, 2, 3, 4].map((n) => `<option ${n === Number(r.ausbildungsjahr) ? 'selected' : ''}>${n}</option>`).join('')}</select>` : r.ausbildungsjahr}</td>
+          <th><span class="lg">Ausbildungsbereich</span><span class="sm">Bereich</span></th><td>${ed ? `<select data-f="bereich">${bereichListe(r.bereich).map((b) => `<option ${b === r.bereich ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` : esc(r.bereich)}</td></tr>
+        <tr><th><span class="lg">Ausbildungswoche vom</span><span class="sm">Woche vom</span></th><td>${de(r.weekStart)}</td><th>bis</th><td>${de(r.bis)}</td></tr>
       </tbody></table>
       <div class="days"><div class="dhead"><span></span><span>Betriebliche Tätigkeiten, Unterweisungen, Unterricht, Themen der Berufsschule</span><span>Std.</span></div>
       ${r.days.map((d, i) => dayRow(d, i, ed)).join('')}</div>`;
@@ -421,6 +437,7 @@
         <button class="primary" data-act="finish" ${locked('unterschreiben') ? 'disabled' : ''}>Prüfen & unterschreiben</button><div id="finerr" class="full">${lockNote('unterschreiben')}</div></div>`;
     }
     app.innerHTML = html;
+    $$('textarea[data-k=text]').forEach(autosize);
     bindReport();
   }
 
@@ -433,7 +450,7 @@
       <div class="dtext">
         <div class="dmeta"><b>${deShort(d.date)}</b>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}
           ${ed ? `<select data-i="${i}" data-k="type" aria-label="Art des Tages">${Object.entries(types).map(([k, t]) => `<option value="${k}" ${k === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select>` : `<span class="muted">${types[d.type]}</span>`}</div>
-        ${ed ? `<textarea data-i="${i}" data-k="text" spellcheck="true" lang="de" rows="4" placeholder="Was hast du an diesem Tag gemacht?">${esc(d.text)}</textarea>
+        ${ed ? `<div class="tawrap"><div class="mirror" id="mir-${i}" aria-hidden="true">${esc(d.text)}&#8203;</div><textarea data-i="${i}" data-k="text" spellcheck="false" lang="de" rows="4" placeholder="Was hast du an diesem Tag gemacht?">${esc(d.text)}</textarea></div>
         <div class="tools">
           <button type="button" data-act="insert" data-i="${i}">＋ Einfügen</button>
           <button type="button" data-act="ideas" data-i="${i}" ${locked('ideen') ? 'disabled' : ''}>💡 Ideen</button>
@@ -457,7 +474,8 @@
     if (R.undo[i].length > 40) R.undo[i].shift();
     day.text = value;
     const ta = $(`textarea[data-i="${i}"]`);
-    if (ta) { ta.value = value; if (cursor !== undefined) { ta.focus(); ta.setSelectionRange(cursor, cursor); } }
+    if (ta) { ta.value = value; autosize(ta); if (cursor !== undefined) { ta.focus(); ta.setSelectionRange(cursor, cursor); } }
+    drawMirror(i);
     const u = $('#undo-' + i); if (u) u.disabled = false;
     markDirty(true);
     runCheck(i);
@@ -466,7 +484,8 @@
     const st = R.undo[i] || []; if (!st.length) return;
     const prev = st.pop(), day = R.rep.days[i];
     day.text = prev;
-    const ta = $(`textarea[data-i="${i}"]`); if (ta) ta.value = prev;
+    const ta = $(`textarea[data-i="${i}"]`); if (ta) { ta.value = prev; autosize(ta); }
+    drawMirror(i);
     const u = $('#undo-' + i); if (u) u.disabled = !st.length;
     markDirty(true); runCheck(i);
     toast('Rückgängig gemacht.');
@@ -546,6 +565,7 @@
 
   function bindReport() {
     app.onclick = async (e) => {
+      if (e.target.matches && e.target.matches('textarea[data-k=text]')) { const ta = e.target; return setTimeout(() => popover(Number(ta.dataset.i), ta.selectionStart), 0); }
       const b = e.target.closest('button[data-act]');
       if (!b) return;
       const act = b.dataset.act, i = Number(b.dataset.i);
@@ -560,6 +580,8 @@
       if (act === 'ideas') return ideasPanel(i);
       if (act === 'remember') return remember(i);
       if (act === 'undo') return undo(i);
+      if (act === 'fixall') return fixAll(i);
+      if (act === 'list') { R.showList[i] = !R.showList[i]; return renderIssues(i); }
       if (act === 'ins') {
         let t = '';
         if (b.dataset.src === 'bs') t = S.user.bausteine[Number(b.dataset.k)].text;
@@ -575,7 +597,7 @@
       if (el.dataset.f === 'nr') { R.rep.nr = Number(el.value) || R.rep.nr; markDirty(); return; }
       if (el.dataset.i === undefined) return;
       const i = Number(el.dataset.i), day = R.rep.days[i];
-      if (el.dataset.k === 'text') { day.text = el.value; lastCursor[i] = el.selectionEnd; markDirty(); scheduleCheck(i); }
+      if (el.dataset.k === 'text') { day.text = el.value; lastCursor[i] = el.selectionEnd; autosize(el); drawMirror(i); hidePop(); markDirty(); scheduleCheck(i); }
       if (el.dataset.k === 'hours') { day.hours = Number(el.value) || 0; markDirty(); }
     };
     app.onchange = (e) => {
@@ -588,6 +610,7 @@
       if (!day.text.trim() || day.text === fillText(old, hol)) day.text = fillText(day.type, hol);
       day.hours = day.type === 'betrieb' ? Number(S.user.stunden) || 7.6 : day.type === 'schule' ? Number(S.user.schulstunden) || 7.6 : 0;
       $('#day-' + i).outerHTML = dayRow(day, i, true);
+      autosize($(`textarea[data-i="${i}"]`));
       markDirty(true); runCheck(i);
     };
     app.onfocusout = (e) => {
@@ -647,22 +670,89 @@
     if (!c || c.text !== R.rep.days[i].text) return null;
     return c.matches.filter((m) => !R.ignored.has(keyOf(m)));
   }
+  const ART = { rs: 'Rechtschreibung', gr: 'Grammatik', zs: 'Zeichensetzung', st: 'Stil' };
+  /* Fehler direkt im Text farbig unterstreichen (Spiegel-Ebene hinter dem Textfeld) */
+  function drawMirror(i) {
+    const mir = $('#mir-' + i); if (!mir) return;
+    const day = R.rep.days[i], c = R.checks[i];
+    const list = c && c.text === day.text && !c.error ? openIssues(i) : [];
+    let html = '', pos = 0;
+    for (const m of [...list].sort((x, y) => x.offset - y.offset)) {
+      if (m.offset < pos) continue;
+      html += esc(day.text.slice(pos, m.offset)) + `<mark class="a-${m.art || 'gr'}" data-m="${c.matches.indexOf(m)}">${esc(day.text.substr(m.offset, m.length)) || ' '}</mark>`;
+      pos = m.offset + m.length;
+    }
+    mir.innerHTML = html + esc(day.text.slice(pos)) + '&#8203;';
+  }
+  function autosize(ta) { if (!ta) return; ta.style.height = 'auto'; ta.style.height = Math.max(ta.scrollHeight + 2, 88) + 'px'; }
   function renderIssues(i) {
+    drawMirror(i);
     const box = $('#iss-' + i); if (!box) return;
     const c = R.checks[i];
     if (!c || c.text !== R.rep.days[i].text) { box.innerHTML = ''; return; }
     if (c.error) { box.innerHTML = `<div class="muted">${esc(c.error)}</div>`; return; }
     const list = openIssues(i);
     if (!list.length) { box.innerHTML = c.text.trim() ? '<div class="checkok">✓ Rechtschreibung und Grammatik in Ordnung</div>' : ''; return; }
-    box.innerHTML = list.map((m) => {
-      const idx = c.matches.indexOf(m);
-      const a = Math.max(0, m.offset - 25), b = Math.min(c.text.length, m.offset + m.length + 25);
-      const ctx = (a > 0 ? '…' : '') + esc(c.text.slice(a, m.offset)) + '<mark>' + esc(c.text.substr(m.offset, m.length)) + '</mark>' + esc(c.text.slice(m.offset + m.length, b)) + (b < c.text.length ? '…' : '');
-      return `<div class="issue"><div>${esc(m.message)}</div><div class="ctx">${ctx}</div><div class="sug">
-        ${m.replacements.map((v) => `<button class="fix" data-act="fix" data-i="${i}" data-m="${idx}" data-v="${esc(v)}">${esc(v) || '(entfernen)'}</button>`).join('')}
-        <button data-act="ignore" data-i="${i}" data-key="${esc(keyOf(m))}">So lassen</button>
-        ${m.typo ? `<button data-act="dict" data-word="${esc(m.word)}">Ins Wörterbuch</button>` : ''}</div></div>`;
-    }).join('');
+    const count = {}; list.forEach((m) => { count[m.art || 'gr'] = (count[m.art || 'gr'] || 0) + 1; });
+    const fixable = list.filter((m) => m.art === 'rs' && m.replacements.length).length;
+    let html = `<div class="sumline">${Object.entries(count).map(([k, n]) => `<span class="dot a-${k}"></span>${n} ${ART[k]}`).join(' &nbsp;')}
+      <span class="muted"> · markiertes Wort antippen</span></div>
+      <div class="row sumbtns">${fixable > 1 ? `<button type="button" class="small ok" data-act="fixall" data-i="${i}">Alle ${fixable} Rechtschreibfehler korrigieren</button>` : ''}
+      <button type="button" class="small" data-act="list" data-i="${i}">${R.showList[i] ? 'Liste ausblenden' : 'Als Liste zeigen'}</button></div>`;
+    if (R.showList[i]) {
+      html += list.map((m) => {
+        const idx = c.matches.indexOf(m);
+        const a = Math.max(0, m.offset - 25), b = Math.min(c.text.length, m.offset + m.length + 25);
+        const ctx = (a > 0 ? '…' : '') + esc(c.text.slice(a, m.offset)) + `<mark class="a-${m.art}">` + esc(c.text.substr(m.offset, m.length)) + '</mark>' + esc(c.text.slice(m.offset + m.length, b)) + (b < c.text.length ? '…' : '');
+        return `<div class="issue"><div><span class="dot a-${m.art}"></span>${esc(m.message)}</div><div class="ctx">${ctx}</div>${sugButtons(i, m, idx)}</div>`;
+      }).join('');
+    }
+    box.innerHTML = html;
+  }
+  function sugButtons(i, m, idx) {
+    return `<div class="sug">${m.replacements.map((v) => `<button class="fix" data-act="fix" data-i="${i}" data-m="${idx}" data-v="${esc(v)}">${esc(v) || '(entfernen)'}</button>`).join('')}
+      <button data-act="ignore" data-i="${i}" data-key="${esc(keyOf(m))}">So lassen</button>
+      ${m.typo ? `<button data-act="dict" data-word="${esc(m.word)}">Ins Wörterbuch</button>` : ''}</div>`;
+  }
+  /* Antippen eines markierten Wortes: kleines Fenster mit Vorschlaegen */
+  function popover(i, caret) {
+    hidePop();
+    const c = R.checks[i], day = R.rep.days[i];
+    if (!c || c.text !== day.text || c.error) return;
+    const m = openIssues(i).find((x) => caret >= x.offset && caret <= x.offset + x.length);
+    if (!m) return;
+    const idx = c.matches.indexOf(m), mark = $(`#mir-${i} mark[data-m="${idx}"]`);
+    if (!mark) return;
+    const r = mark.getBoundingClientRect(), pop = document.createElement('div');
+    pop.id = 'pop'; pop.className = 'pop';
+    pop.innerHTML = `<div class="pophead"><span class="dot a-${m.art}"></span>${ART[m.art]}</div><div>${esc(m.message)}</div>${sugButtons(i, m, idx)}`;
+    document.body.appendChild(pop);
+    const w = Math.min(340, window.innerWidth - 16);
+    pop.style.width = w + 'px';
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left)) + 'px';
+    const below = r.bottom + 6, h = pop.offsetHeight;
+    pop.style.top = (below + h > window.innerHeight - 70 ? Math.max(8, r.top - h - 6) : below) + 'px';
+  }
+  function hidePop() { const p = $('#pop'); if (p) p.remove(); }
+  window.addEventListener('scroll', hidePop, { passive: true });
+  document.addEventListener('click', (e) => { if (!e.target.closest('#pop') && !e.target.matches('textarea[data-k=text]')) hidePop(); });
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('#pop button[data-act]'); if (!b) return;
+    const i = Number(b.dataset.i);
+    if (b.dataset.act === 'fix') applyFix(i, Number(b.dataset.m), b.dataset.v);
+    if (b.dataset.act === 'ignore') { R.ignored.add(b.dataset.key); renderIssues(i); }
+    if (b.dataset.act === 'dict') addDict(b.dataset.word);
+    hidePop();
+  });
+  function fixAll(i) {
+    const c = R.checks[i], day = R.rep.days[i];
+    if (!c || c.text !== day.text) return;
+    let t = day.text;
+    for (const m of openIssues(i).filter((x) => x.art === 'rs' && x.replacements.length).sort((x, y) => y.offset - x.offset)) {
+      t = t.slice(0, m.offset) + m.replacements[0] + t.slice(m.offset + m.length);
+    }
+    setText(i, t);
+    toast('Korrigiert. Mit „Rückgängig“ kannst du es zurücknehmen.');
   }
   function applyFix(i, mi, value) {
     const c = R.checks[i], day = R.rep.days[i];
@@ -767,6 +857,14 @@
 
       <div class="card"><h2>Speicherort für PDFs</h2><div id="folder"></div></div>
 
+      <div class="card"><h2>Rechtschreibprüfung</h2>
+        <p class="muted">Fehler werden direkt im Text farbig unterstrichen. Tippe auf ein markiertes Wort, um einen Vorschlag zu übernehmen.</p>
+        <p class="legend"><span><span class="dot a-rs"></span>Rechtschreibung</span><span><span class="dot a-gr"></span>Grammatik</span><span><span class="dot a-zs"></span>Zeichensetzung</span><span><span class="dot a-st"></span>Stil</span></p>
+        <label class="switch"><span>Genaue Prüfung<br><span class="muted">Auch Stil, Füllwörter und Wiederholungen</span></span><input type="checkbox" id="genau" ${u.genau ? 'checked' : ''}></label></div>
+
+      <div class="card"><h2>Speicherplatz</h2>${speicherBar(u.speicher)}
+        <p class="muted small-t">Berichte brauchen sehr wenig Platz. Wenn er voll wird, kann der Admin dir mehr geben.</p></div>
+
       <div class="card"><h2>Mein Wörterbuch</h2><p class="muted">Fachwörter, die die Rechtschreibprüfung nicht anstreichen soll.</p>
         <div class="tags" id="dict">${dictTags()}</div>
         <form id="df" class="row"><input type="text" name="w" placeholder="Wort hinzufügen" class="grow"><button>Hinzufügen</button></form></div>
@@ -783,8 +881,11 @@
       catch (x) { errBox($('#perr'), x.message); }
     };
     bindPw(() => toast('Passwort geändert.'));
-    bindDict(); signaturePad(); folderCard(); orteEditor(); bausteineEditor();
+    bindDict(); signaturePad(); folderCard(); orteEditor(); bausteineEditor(); fillBars();
     $('#tour2').onclick = () => tutorial(true);
+    $('#genau').onchange = async (e) => {
+      try { S.user = (await api('POST', '/api/me', { genau: e.target.checked })).user; toast(e.target.checked ? 'Genaue Prüfung ist an.' : 'Normale Prüfung.'); } catch (x) { toast(x.message); }
+    };
   }
 
   function orteEditor() {
@@ -919,7 +1020,7 @@
   }
 
   function zugangsText(name, pw) {
-    return `Dein Zugang zum Berichtsheft\nAdresse: ${location.origin}\nBenutzername: ${name}\nStartpasswort: ${pw}\n\nBeim ersten Anmelden legst du ein eigenes Passwort fest und trägst deinen Namen, deine Firma und deinen Standort ein.`;
+    return `Dein Zugang zum Berichtsheft\nAdresse: ${location.origin}\nBenutzername: ${name}\nStartpasswort: ${pw}\n\nBeim ersten Anmelden legst du ein eigenes Passwort fest und trägst Name, Firma, Arbeitsplatz und Lehrjahr ein.`;
   }
   async function showPw(name, pw) {
     const t = zugangsText(name, pw);
@@ -934,8 +1035,9 @@
     const azubis = users.filter((u) => u.role !== 'admin'), admins = users.filter((u) => u.role === 'admin');
     const card = (u) => `<div class="item">
       <div class="main"><strong>${u.vorname || u.nachname ? esc(`${u.vorname} ${u.nachname}`) : '<span class="muted">Noch nicht eingerichtet</span>'} <span class="muted">@${esc(u.username)}</span></strong>
-        <span class="muted">${u.firma ? esc(u.firma) : 'Firma –'} · ${u.standort ? esc(u.standort) : 'Standort –'}</span><br>
-        <span class="muted small-t">Dabei ${since(u.created)} · zuletzt aktiv ${ago(u.lastSeen)}${u.role === 'admin' ? '' : ` · ${u.reports} Berichte`}</span></div>
+        <span class="muted">${u.firma ? esc(u.firma) : 'Firma –'} · ${u.arbeitsplatz ? esc(u.arbeitsplatz) : 'Arbeitsplatz –'}${u.arbeitsart ? ` (${u.arbeitsart === 'mobil' ? 'mobil' : 'fest'})` : ''}</span><br>
+        <span class="muted small-t">Dabei ${since(u.created)} · zuletzt aktiv ${ago(u.lastSeen)}${u.role === 'admin' ? '' : ` · ${u.reports} Berichte`}</span>
+        ${u.role === 'admin' ? '' : speicherBar(u.speicher)}</div>
       ${u.active ? '' : '<span class="chip bad">Gesperrt</span>'}${u.mustChange ? '<span class="chip warn">Startpasswort</span>' : ''}${u.role === 'admin' ? '<span class="chip brand">Admin</span>' : ''}
       <div class="row">
         <button class="small" data-u="${esc(u.id)}" data-a="edit">Bearbeiten</button>
@@ -944,14 +1046,15 @@
         ${u.id === S.user.id ? '' : `<button class="small ${u.active ? 'danger' : ''}" data-u="${esc(u.id)}" data-a="active" data-v="${u.active ? '0' : '1'}">${u.active ? 'Sperren' : 'Entsperren'}</button>`}
       </div></div>`;
     $('#adm').innerHTML = `<div class="card"><h2>Neues Konto</h2>
-      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma und Standort ein.</p>
+      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma, Arbeitsplatz (mobil oder fest) und Lehrjahr ein.</p>
       <form id="nf" class="row"><input type="text" name="username" autocapitalize="none" required placeholder="z. B. carlo.w" class="grow">
       <select name="role" class="auto-w"><option value="azubi">Azubi</option><option value="admin">Admin</option></select><button class="primary">Anlegen</button></form>
       <div id="nerr"></div>
       <p class="muted small-t">Tipp: Lege dir für deine eigenen Berichte ein normales Azubi-Konto an. Der Admin-Zugang ist nur zum Verwalten.</p></div>
       <h2>Azubis (${azubis.length})</h2><div class="list">${azubis.map(card).join('') || '<div class="card muted">Noch keine Konten.</div>'}</div>
       <h2 class="mt2">Admins (${admins.length})</h2><div class="list">${admins.map(card).join('')}</div>
-      <p class="muted small-t mt2">Aus Datenschutzgründen siehst du hier keine Berichte, nur die Kontodaten.</p>`;
+      <p class="muted small-t mt2">Aus Datenschutzgründen siehst du hier keine Berichte, nur die Kontodaten und wie viel Speicher belegt ist.</p>`;
+    fillBars();
     $('#nf').onsubmit = async (e) => {
       e.preventDefault();
       try { const r = await api('POST', '/api/admin/users', Object.fromEntries(new FormData(e.target))); await showPw(r.user.username, r.password); adminUsers(); }
@@ -980,10 +1083,14 @@
       if (a === 'edit') {
         const res = await modal(`<form><h2>@${esc(u.username)} bearbeiten</h2>
           <div class="grid"><div><label>Vorname</label><input type="text" name="vorname" value="${esc(u.vorname)}"></div><div><label>Nachname</label><input type="text" name="nachname" value="${esc(u.nachname)}"></div></div>
-          <label>Firma</label><input type="text" name="firma" value="${esc(u.firma)}"><label>Standort</label><input type="text" name="standort" value="${esc(u.standort)}">
+          <label>Firma</label><input type="text" name="firma" value="${esc(u.firma)}"><label>Arbeitsplatz</label><input type="text" name="arbeitsplatz" value="${esc(u.arbeitsplatz)}">
+          <label>Arbeitsweise</label><select name="arbeitsart"><option value="">–</option><option value="fest" ${u.arbeitsart === 'fest' ? 'selected' : ''}>Fester Arbeitsplatz</option><option value="mobil" ${u.arbeitsart === 'mobil' ? 'selected' : ''}>Mobil</option></select>
+          ${u.role === 'admin' ? '' : `<label>Speicherplatz in MB</label><input type="number" name="speicherMB" min="1" max="10000" value="${u.speicherMB || ''}" placeholder="leer = Standard für alle">
+          <div class="hint">Belegt: ${mb(u.speicher.used)} MB. Leer lassen für den Standard.</div>`}
           <div class="actions"><button class="primary" data-m="form">Speichern</button><button type="button" data-m="no">Abbrechen</button></div></form>`);
         if (!res || typeof res !== 'object') return;
         Object.assign(body, res);
+        if ('speicherMB' in res && res.speicherMB === '') body.speicherMB = null;
       }
       try {
         const r = await api('POST', '/api/admin/user', body);
@@ -1024,6 +1131,8 @@
       <label>Dateiname der PDFs</label><input type="text" name="dateiname" value="${esc(s.dateiname)}" id="fn">
       <div class="hint">Bausteine: <code>{vorname}</code> <code>{nachname}</code> <code>{nr}</code> <code>{nr3}</code> <code>{kw}</code> <code>{jahr}</code> <code>{von}</code> <code>{bis}</code> <code>{bereich}</code><br>Beispiel: <strong id="fnex"></strong></div>
       <label>Nach dem Unterschreiben noch bearbeitbar (Tage)</label><input type="number" name="bearbeitbarTage" min="1" max="3650" value="${s.bearbeitbarTage}">
+      <label>Speicherplatz pro Konto (MB, Standard)</label><input type="number" name="speicherMB" min="1" max="10000" value="${s.speicherMB}">
+      <div class="hint">Gilt für alle ohne eigene Grenze. Einzelnen Personen gibst du unter Konten → Bearbeiten mehr oder weniger. Ein Wochenbericht braucht etwa 5–20 KB.</div>
       <h3 class="mt2">Vorausgefüllter Text je Tagesart</h3><div class="hint"><code>{name}</code> wird beim Feiertag durch den Namen ersetzt.</div>
       ${Object.entries(T).map(([k, t]) => `<label>${t}</label><input type="text" name="vb_${k}" value="${esc(vb[k])}">`).join('')}
       <h3 class="mt2">Rechtschreibprüfung</h3>
@@ -1040,7 +1149,7 @@
       const f = e.target, fd = new FormData(f);
       const b = {
         bereiche: f.bereiche.value.split('\n').map((x) => x.trim()).filter(Boolean), bundesland: f.bundesland.value,
-        arbeitstage: fd.getAll('arbeitstage').map(Number), dateiname: f.dateiname.value, bearbeitbarTage: f.bearbeitbarTage.value,
+        arbeitstage: fd.getAll('arbeitstage').map(Number), dateiname: f.dateiname.value, bearbeitbarTage: f.bearbeitbarTage.value, speicherMB: f.speicherMB.value,
         ltUrl: f.ltUrl.value, vorbelegung: Object.fromEntries(Object.keys(T).map((k) => [k, f['vb_' + k].value]))
       };
       try {

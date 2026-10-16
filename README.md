@@ -16,12 +16,17 @@ Eigenständiges Programm unter https://bh-bremen.de
 - **Beim Schreiben:** ＋ Einfügen (Arbeitsorte/Bausteine an der Cursor-Stelle), ★ Markiertes merken,
   💡 Ideen (aus den eigenen früheren Berichten und der Woche, einfügen oder kopieren), ↶ Rückgängig.
   Speichert bei jeder Änderung, auf jedem Gerät weiter bearbeitbar (Handy schreiben, Tablet herunterladen).
-- **Rechtschreibung und Grammatik** mit LanguageTool auf dem eigenen Server, Vorschläge zum Antippen, Wörterbuch.
+- **Rechtschreibung und Grammatik** mit LanguageTool auf dem eigenen Server, direkt im Text farbig unterstrichen
+  (Rechtschreibung rot, Grammatik blau, Zeichensetzung orange, Stil lila). Wort antippen → Vorschlag übernehmen,
+  „Alle Rechtschreibfehler korrigieren“, Wörterbuch, genaue Prüfung (Stil, Füllwörter) zuschaltbar.
 - **Unterschrift** mit wählbarem Datum, jedes Mal minimal anders gesetzt. PDF `Berichtsheft_Nachname_NRx.pdf`,
   am PC fester Speicherordner, am Handy „In Dateien sichern“. 90 Tage nachträglich bearbeitbar.
 - **Konten:** eigener reiner Admin-Zugang plus normale Konten. Admin gibt nur einen Benutzernamen ein und bekommt
-  ein kurzes Startpasswort. Beim ersten Anmelden: eigenes Passwort, dann Name, Firma, Standort, Lehrjahr.
-- **Admin sieht keine Berichte**, nur Name, Firma, Standort, dabei seit, zuletzt aktiv. Bearbeiten, sperren,
+  ein kurzes Startpasswort. Beim ersten Anmelden: eigenes Passwort, dann Name, Firma, Arbeitsplatz (fest oder mobil),
+  Lehrjahr. Ein neues Passwort bei Verlust kann nur der Admin erstellen.
+- **Speicherplatz pro Konto:** Standard 20 MB (Admin → Einstellungen), pro Person änderbar. Der Admin sieht nur,
+  wie viel belegt ist, nicht was.
+- **Admin sieht keine Berichte**, nur Name, Firma, Arbeitsplatz, dabei seit, zuletzt aktiv, Speicher. Bearbeiten, sperren,
   neues Startpasswort (mit Bestätigung durch Eintippen des Benutzernamens), Bearbeitungsfrist verlängern.
 - **Funktionen sperren:** Anmelden, neue Berichte, Schreiben, Rechtschreibprüfung, Ideen, Unterschreiben, PDF
   einzeln vorübergehend abschalten, mit eigenem Hinweistext.

@@ -14,7 +14,7 @@ const { fill, fitDay } = require('./lib/fill');
 const { decodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 
-const VERSION = '3.0.0';
+const VERSION = '3.1.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -59,6 +59,7 @@ const DEFAULT_SETTINGS = {
   bearbeitbarTage: 90,
   ltUrl: '',
   gesperrt: {},
+  speicherMB: 20,
   sperrText: 'Diese Funktion ist gerade wegen Wartung gesperrt. Bitte später noch einmal versuchen.',
   vorbelegung: {
     betrieb: '',
@@ -91,6 +92,7 @@ function merge(def, val) {
 const db = readJson(DB_FILE, { users: {}, reports: {}, settings: {} });
 db.users ||= {}; db.reports ||= {};
 db.settings = merge(DEFAULT_SETTINGS, db.settings || {});
+for (const u of Object.values(db.users)) if (u.standort && !u.arbeitsplatz) { u.arbeitsplatz = u.standort; delete u.standort; }
 let saveTimer = null;
 function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => writeJson(DB_FILE, db), 50); }
 function saveNow() { clearTimeout(saveTimer); writeJson(DB_FILE, db); }
@@ -212,14 +214,53 @@ function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id, username: u.username, role: u.role, mustChange: !!u.mustChange, created: u.created,
-    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', standort: u.standort || '', lehrjahr: u.lehrjahr || '',
+    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', arbeitsplatz: u.arbeitsplatz || '', arbeitsart: u.arbeitsart || '', lehrjahr: u.lehrjahr || '',
+    genau: !!u.genau, speicher: speicherInfo(u),
     bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
     hasSignature: !!u.sig, woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
     tutorialDone: !!u.tutorialDone, active: u.active
   };
 }
 /* Pflichtangaben: Azubis brauchen Name, Firma, Standort und Lehrjahr */
-const profileMissing = (u) => (u.role === 'admin' ? [] : ['vorname', 'nachname', 'firma', 'standort', 'lehrjahr'].filter((k) => !u[k]));
+const profileMissing = (u) => (u.role === 'admin' ? [] : ['vorname', 'nachname', 'firma', 'arbeitsplatz', 'arbeitsart', 'lehrjahr'].filter((k) => !u[k]));
+
+/* ---------- Speicherplatz pro Konto (nur die Groesse wird gezaehlt, nicht der Inhalt angesehen) ---------- */
+const MB = 1024 * 1024;
+const sigSizes = new Map();
+function sigSize(id) {
+  if (!id) return 0;
+  if (!sigSizes.has(id)) { try { sigSizes.set(id, fs.statSync(path.join(SIG_DIR, id + '.png')).size); } catch { sigSizes.set(id, 0); } }
+  return sigSizes.get(id);
+}
+function usageOf(u) {
+  let bytes = Buffer.byteLength(JSON.stringify({ o: u.orte, b: u.bausteine, w: u.woerterbuch }));
+  const sigs = new Set([u.sig]);
+  for (const r of Object.values(db.reports)) {
+    if (r.userId !== u.id) continue;
+    bytes += Buffer.byteLength(JSON.stringify(r));
+    sigs.add(r.sig);
+    for (const h of r.history || []) sigs.add(h.sig);
+  }
+  for (const s of sigs) bytes += sigSize(s);
+  return bytes;
+}
+const quotaOf = (u) => (u.speicherMB ? Number(u.speicherMB) : Number(db.settings.speicherMB) || 20) * MB;
+function speicherInfo(u) {
+  const used = usageOf(u), quota = quotaOf(u);
+  return { used, quota, eigen: !!u.speicherMB, prozent: Math.min(100, Math.round(100 * used / quota)) };
+}
+/* Aenderung ausfuehren; wenn das Konto danach ueber der Grenze ist und mehr belegt als vorher: zuruecknehmen */
+function mitSpeicher(u, change, undo) {
+  if (u.role === 'admin') return change();
+  const before = usageOf(u);
+  const out = change();
+  const after = usageOf(u);
+  if (after > quotaOf(u) && after > before) {
+    undo();
+    fail(507, `Dein Speicherplatz ist voll (${(quotaOf(u) / MB).toLocaleString('de-DE')} MB). Bitte beim Admin mehr Speicher anfragen.`);
+  }
+  return out;
+}
 
 function deadlineOf(r) {
   if (!r.firstSignedAt) return null;
@@ -321,9 +362,19 @@ function listItem(r) {
 
 /* ---------- Rechtschreibung (LanguageTool) ---------- */
 
+/* Art des Hinweises fuer die Farbe: Rechtschreibung, Grammatik, Zeichensetzung, Stil */
+function artOf(m) {
+  const cat = (m.rule && m.rule.category && m.rule.category.id) || '', type = (m.rule && m.rule.issueType) || '';
+  if (type === 'misspelling' || cat === 'TYPOS' || cat === 'CASING' || cat === 'COMPOUNDING') return 'rs';
+  if (cat === 'PUNCTUATION' || cat === 'TYPOGRAPHY' || type === 'typographical') return 'zs';
+  if (['STYLE', 'REDUNDANCY', 'COLLOQUIALISMS', 'REPETITIONS', 'REPETITIONS_STYLE', 'EMPFOHLENE_RECHTSCHREIBUNG'].includes(cat) || type === 'style') return 'st';
+  return 'gr';
+}
+
 async function spellcheck(user, input) {
   const base = (db.settings.ltUrl || LT_DEFAULT).replace(/\/+$/, '');
   const body = new URLSearchParams({ text: input, language: 'de-DE' });
+  if (user.genau) body.set('level', 'picky'); /* genauer Modus: auch Stil, Fuellwoerter, Wiederholungen */
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
   let data;
@@ -340,6 +391,7 @@ async function spellcheck(user, input) {
     word: input.substr(m.offset, m.length),
     replacements: (m.replacements || []).slice(0, 5).map((x) => x.value),
     typo: !!(m.rule && m.rule.issueType === 'misspelling'),
+    art: artOf(m),
     rule: m.rule ? m.rule.id : ''
   })).filter((m) => !(m.typo && dict.has(m.word.toLowerCase())));
   return { matches };
@@ -472,14 +524,19 @@ route('POST', '/api/password', 'user', (ctx) => {
 route('POST', '/api/me', 'user', (ctx) => {
   const u = ctx.user, b = ctx.body;
   for (const k of ['vorname', 'nachname']) if (k in b) { const v = str(b[k], 60); if (!v && u.role !== 'admin') fail(400, 'Vorname und Nachname sind Pflichtfelder.'); u[k] = v; }
-  for (const k of ['firma', 'standort']) if (k in b) { const v = str(b[k], 120); if (!v && u.role !== 'admin') fail(400, 'Firma und Standort sind Pflichtfelder.'); u[k] = v; }
+  for (const k of ['firma', 'arbeitsplatz']) if (k in b) { const v = str(b[k], 120); if (!v && u.role !== 'admin') fail(400, 'Firma und Arbeitsplatz sind Pflichtfelder.'); u[k] = v; }
+  if ('arbeitsart' in b) { if (!['mobil', 'fest'].includes(b.arbeitsart)) fail(400, 'Bitte auswählen, ob dein Arbeitsplatz mobil oder fest ist.'); u.arbeitsart = b.arbeitsart; }
+  if ('genau' in b) u.genau = !!b.genau;
   if ('lehrjahr' in b) u.lehrjahr = Math.round(num(b.lehrjahr, 1, 4, 1));
   if ('bereich' in b) u.bereich = str(b.bereich, 40);
   if ('schultage' in b) u.schultage = (Array.isArray(b.schultage) ? b.schultage : []).map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).slice(0, 7);
   if ('stunden' in b) u.stunden = num(b.stunden, 0, 24, 7.6);
   if ('schulstunden' in b) u.schulstunden = num(b.schulstunden, 0, 24, 7.6);
-  if ('orte' in b) u.orte = cleanOrte(b.orte);
-  if ('bausteine' in b) u.bausteine = cleanBausteine(b.bausteine);
+  const old = { orte: u.orte, bausteine: u.bausteine };
+  mitSpeicher(u, () => {
+    if ('orte' in b) u.orte = cleanOrte(b.orte);
+    if ('bausteine' in b) u.bausteine = cleanBausteine(b.bausteine);
+  }, () => Object.assign(u, old));
   if ('tutorialDone' in b) u.tutorialDone = !!b.tutorialDone;
   save();
   return { user: publicUser(u), missing: profileMissing(u) };
@@ -488,7 +545,10 @@ route('POST', '/api/me', 'user', (ctx) => {
 route('POST', '/api/me/signature', 'azubi', (ctx) => {
   const u = ctx.user;
   if (ctx.body.png === null) { u.sig = ''; save(); return { user: publicUser(u) }; }
-  try { u.sig = saveSignature(ctx.body.png); } catch (e) { fail(400, e.message); }
+  const old = u.sig;
+  let id;
+  try { id = saveSignature(ctx.body.png); } catch (e) { fail(400, e.message); }
+  mitSpeicher(u, () => { u.sig = id; }, () => { u.sig = old; });
   save();
   return { user: publicUser(u) };
 });
@@ -502,7 +562,7 @@ route('POST', '/api/me/dict', 'azubi', (ctx) => {
   const u = ctx.user;
   u.woerterbuch ||= [];
   const add = str(ctx.body.add, 60), del = str(ctx.body.remove, 60);
-  if (add && /^[\p{L}\p{N}.\-/]+$/u.test(add) && !u.woerterbuch.includes(add) && u.woerterbuch.length < 1000) u.woerterbuch.push(add);
+  if (add && /^[\p{L}\p{N}.\-/]+$/u.test(add) && !u.woerterbuch.includes(add) && u.woerterbuch.length < 1000) mitSpeicher(u, () => u.woerterbuch.push(add), () => u.woerterbuch.pop());
   if (del) u.woerterbuch = u.woerterbuch.filter((w) => w !== del);
   save();
   return { woerterbuch: u.woerterbuch };
@@ -544,7 +604,7 @@ function schoolWeek(days, bereich) {
 route('POST', '/api/report/new', 'azubi', (ctx) => {
   gesperrt('neu');
   const u = ctx.user, b = ctx.body;
-  if (profileMissing(u).length) fail(400, 'Bitte zuerst in den Einstellungen Name, Firma, Standort und Lehrjahr eintragen.');
+  if (profileMissing(u).length) fail(400, 'Bitte zuerst in den Einstellungen Name, Firma, Arbeitsplatz und Lehrjahr eintragen.');
   const d = str(b.weekStart, 10) || heute();
   if (!W.isDate(d)) fail(400, 'Bitte ein gültiges Datum wählen.');
   const ws = W.mondayOf(d);
@@ -553,11 +613,13 @@ route('POST', '/api/report/new', 'azubi', (ctx) => {
   const auto = W.buildWeek(u, db.settings, ws);
   const bereich = str(b.bereich, 40);
   const id = crypto.randomBytes(9).toString('base64url');
-  db.reports[id] = {
-    id, userId: u.id, weekStart: ws, nr: Math.round(num(b.nr, 1, 9999, 1)), bereich,
-    ausbildungsjahr: Number(u.lehrjahr) || 1, days: schoolWeek(auto.days, bereich), status: 'entwurf',
-    created: new Date().toISOString(), updated: new Date().toISOString(), history: []
-  };
+  mitSpeicher(u, () => {
+    db.reports[id] = {
+      id, userId: u.id, weekStart: ws, nr: Math.round(num(b.nr, 1, 9999, 1)), bereich,
+      ausbildungsjahr: Number(u.lehrjahr) || 1, days: schoolWeek(auto.days, bereich), status: 'entwurf',
+      created: new Date().toISOString(), updated: new Date().toISOString(), history: []
+    };
+  }, () => { delete db.reports[id]; });
   saveNow();
   return { id };
 });
@@ -572,10 +634,14 @@ route('POST', '/api/report/save', 'azubi', (ctx) => {
   gesperrt('bearbeiten');
   const r = findReport(ctx, ctx.body.id), b = ctx.body;
   if (r.status === 'abgeschlossen') fail(409, 'Dieser Bericht ist unterschrieben. Zum Ändern zuerst „Nachträglich bearbeiten“ wählen.');
-  if ('nr' in b) r.nr = Math.round(num(b.nr, 1, 9999, r.nr));
-  if ('bereich' in b) r.bereich = str(b.bereich, 40);
-  if ('ausbildungsjahr' in b) r.ausbildungsjahr = Math.round(num(b.ausbildungsjahr, 1, 4, r.ausbildungsjahr));
-  if ('days' in b) r.days = cleanDays(b.days, r.weekStart);
+  const old = { nr: r.nr, bereich: r.bereich, ausbildungsjahr: r.ausbildungsjahr, days: r.days };
+  const days = 'days' in b ? cleanDays(b.days, r.weekStart) : r.days;
+  mitSpeicher(ctx.user, () => {
+    if ('nr' in b) r.nr = Math.round(num(b.nr, 1, 9999, r.nr));
+    if ('bereich' in b) r.bereich = str(b.bereich, 40);
+    if ('ausbildungsjahr' in b) r.ausbildungsjahr = Math.round(num(b.ausbildungsjahr, 1, 4, r.ausbildungsjahr));
+    r.days = days;
+  }, () => Object.assign(r, old));
   r.updated = new Date().toISOString();
   save();
   return { report: reportView(r) };
@@ -659,8 +725,8 @@ route('GET', '/api/blank', 'user', () => {
 function adminUserView(u) {
   return {
     id: u.id, username: u.username, role: u.role, active: u.active, mustChange: !!u.mustChange,
-    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', standort: u.standort || '',
-    created: u.created, lastSeen: u.lastSeen || u.lastLogin || null, reports: ownReports(u.id).length
+    vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', arbeitsplatz: u.arbeitsplatz || '', arbeitsart: u.arbeitsart || '',
+    speicher: speicherInfo(u), speicherMB: u.speicherMB || null, created: u.created, lastSeen: u.lastSeen || u.lastLogin || null, reports: ownReports(u.id).length
   };
 }
 
@@ -694,7 +760,9 @@ route('POST', '/api/admin/user', 'admin', (ctx) => {
     u.active = !!b.active; if (!u.active) endSessions(u.id);
   }
   for (const k of ['vorname', 'nachname']) if (k in b) u[k] = str(b[k], 60);
-  for (const k of ['firma', 'standort']) if (k in b) u[k] = str(b[k], 120);
+  for (const k of ['firma', 'arbeitsplatz']) if (k in b) u[k] = str(b[k], 120);
+  if ('arbeitsart' in b && ['mobil', 'fest', ''].includes(b.arbeitsart)) u.arbeitsart = b.arbeitsart;
+  if ('speicherMB' in b) { const v = b.speicherMB === null || b.speicherMB === '' ? null : num(b.speicherMB, 1, 10000, null); u.speicherMB = v; }
   if (b.extendDays) {
     const until = new Date(Date.now() + num(b.extendDays, 1, 365, 30) * 864e5).toISOString();
     for (const r of ownReports(u.id)) if (r.firstSignedAt) r.freiBis = until;
@@ -715,6 +783,7 @@ route('POST', '/api/admin/settings', 'admin', (ctx) => {
   if ('bearbeitbarTage' in b) s.bearbeitbarTage = num(b.bearbeitbarTage, 1, 3650, 90);
   if ('ltUrl' in b) { const v = str(b.ltUrl, 200); if (v && !/^https?:\/\/[^\s]+$/.test(v)) fail(400, 'Adresse der Rechtschreibprüfung ungültig.'); s.ltUrl = v; }
   if (b.gesperrt && typeof b.gesperrt === 'object') s.gesperrt = Object.fromEntries(Object.keys(FUNKTIONEN).map((k) => [k, !!b.gesperrt[k]]));
+  if ('speicherMB' in b) s.speicherMB = num(b.speicherMB, 1, 10000, 20);
   if ('sperrText' in b) s.sperrText = str(b.sperrText, 200) || DEFAULT_SETTINGS.sperrText;
   if (b.vorbelegung) for (const k of Object.keys(W.TYPEN)) if (k in b.vorbelegung) s.vorbelegung[k] = str(b.vorbelegung[k], 200);
   save();
