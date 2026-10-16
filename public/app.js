@@ -269,11 +269,6 @@
     return `<div class="grid"><div><label>Vorname <span class="req">*</span></label><input type="text" name="vorname" value="${esc(u.vorname)}" required></div>
       <div><label>Nachname <span class="req">*</span></label><input type="text" name="nachname" value="${esc(u.nachname)}" required></div></div>
       <label>Firma <span class="req">*</span></label><input type="text" name="firma" value="${esc(u.firma)}" required placeholder="Name deines Ausbildungsbetriebs">
-      <label>Abteilung / Bereich der Firma <span class="req">*</span></label><input type="text" name="abteilung" value="${esc(u.abteilung)}" required placeholder="z. B. bei der Deutschen Bahn: DB Services oder InfraGO">
-      <label>Standort (Stadt) <span class="req">*</span></label><input type="text" name="standort" value="${esc(u.standort)}" required placeholder="z. B. Bremen oder Oldenburg">
-      <label>Wie arbeitest du? <span class="req">*</span></label>
-      <div class="choice"><label class="inline"><input type="radio" name="arbeitsart" value="fest" ${u.arbeitsart === 'fest' ? 'checked' : ''} required> Fester Arbeitsplatz</label>
-      <label class="inline"><input type="radio" name="arbeitsart" value="mobil" ${u.arbeitsart === 'mobil' ? 'checked' : ''}> Mobil (wechselnde Einsatzorte)</label></div>
       <label>Lehrberuf <span class="req">*</span></label><input type="text" name="beruf" value="${esc(u.beruf)}" required placeholder="z. B. Elektroniker/in für Betriebstechnik">
       <div class="grid"><div><label>Lehrjahr <span class="req">*</span></label><select name="lehrjahr" required>${['', 1, 2, 3, 4].map((n) => `<option value="${n}" ${String(n) === String(u.lehrjahr) ? 'selected' : ''}>${n ? n + '. Lehrjahr' : 'Bitte wählen'}</option>`).join('')}</select></div>
       <div><label>Ausbildung endet im Jahr <span class="req">*</span></label><input type="number" name="endJahr" min="2020" max="2040" value="${esc(u.endJahr)}" required placeholder="z. B. 2029" inputmode="numeric"></div></div>`;
@@ -328,7 +323,7 @@
       ${h('3. Welche Daten werden gespeichert?')}
       <ul>
         <li><strong>Konto:</strong> Benutzername und Passwort. Das Passwort wird nur verschlüsselt (als nicht umkehrbarer Hash) gespeichert.</li>
-        <li><strong>Deine Angaben:</strong> Vor- und Nachname, Firma, Abteilung, Standort (Stadt), feste oder mobile Arbeitsweise, Lehrberuf, Lehrjahr, Jahr des Ausbildungsendes, Stunden und Berufsschultage.</li>
+        <li><strong>Deine Angaben:</strong> Vor- und Nachname, Firma, Lehrberuf, Lehrjahr, Jahr des Ausbildungsendes, Stunden und Berufsschultage.</li>
         <li><strong>Deine Berichte:</strong> Texte, Stunden, Ausbildungsbereich, Nummer, Datum der Unterschrift und frühere Fassungen, wenn du einen Bericht nachträglich änderst.</li>
         <li><strong>Unterschrift:</strong> das Bild deiner Unterschrift, das du hochlädst oder zeichnest.</li>
         <li><strong>Hilfen:</strong> Arbeitsorte (z. B. Adresse und Name von Ausbilder oder Geselle), Textbausteine und dein Wörterbuch. Bitte trage bei Dritten nur ein, was für den Bericht nötig ist.</li>
@@ -342,7 +337,7 @@
       <p>Auf einem gemieteten Server der Hetzner Online GmbH (Industriestr. 25, 91710 Gunzenhausen) in ${esc(d.serverOrt || 'Deutschland')}. Hetzner verarbeitet die Daten nur als technischer Dienstleister (Auftragsverarbeitung) und nicht für eigene Zwecke. Die Verbindung ist per https verschlüsselt.</p>
       <p>Die Rechtschreib- und Grammatikprüfung läuft auf demselben Server. Deine Texte werden dafür <strong>nicht</strong> an andere Anbieter geschickt. Es werden keine Schriften, Skripte oder Inhalte von fremden Servern geladen.</p>
       ${h('7. Wer kann die Daten sehen?')}
-      <p>Deine Berichte siehst nur du. Der Admin-Bereich zeigt nur Kontodaten (Name, Firma, Abteilung, Standort, Lehrberuf, Ausbildungsende, Aktivität und belegten Speicher), keine Berichte. Als Betreiber des Servers hat der Verantwortliche technisch Zugriff auf alle gespeicherten Daten. Er nutzt diesen Zugriff nur für Wartung, Fehlerbehebung und Sicherungen.</p>
+      <p>Deine Berichte siehst nur du. Der Admin-Bereich zeigt nur Kontodaten (Name, Firma, Lehrberuf, Ausbildungsende, Aktivität und belegten Speicher), keine Berichte. Als Betreiber des Servers hat der Verantwortliche technisch Zugriff auf alle gespeicherten Daten. Er nutzt diesen Zugriff nur für Wartung, Fehlerbehebung und Sicherungen.</p>
       ${h('8. Wie lange werden Daten gespeichert?')}
       <p>So lange dein Konto besteht. Nach dem Ende deiner Ausbildung kann dein Konto mit allen Berichten gelöscht werden. Du bekommst vorher einen Hinweis, um alles als PDF zu sichern. Zur Ausfallsicherheit gibt es Sicherungskopien des Servers: tägliche werden nach 14 Tagen gelöscht, monatliche nach spätestens 4 Jahren. Ausbildungsnachweise werden oft noch nach der Prüfung gebraucht.</p>
       ${h('9. Rechtsgrundlage')}
@@ -361,7 +356,7 @@
     const q = (t, b, open) => `<details ${open ? 'open' : ''}><summary>${t}</summary><div>${b}</div></details>`;
     app.innerHTML = `<div class="toprow"><a href="#/" class="back">‹ Zurück</a></div><h1>Anleitung</h1><p class="muted">Kurz erklärt, Schritt für Schritt.</p>
       ${S.user && !isAdmin() ? '<div class="actions"><button class="primary" id="tourbtn">Einführung noch einmal ansehen</button></div><div class="mt"></div>' : ''}
-      ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Name, Firma mit Abteilung, Standort (Stadt), fest oder mobil, Lehrberuf, Lehrjahr und das Jahr, in dem die Ausbildung endet, eintragen.</li></ol>', true)}
+      ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Name, Firma, Lehrberuf, Lehrjahr und das Jahr, in dem die Ausbildung endet, eintragen.</li></ol>', true)}
       ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
       ${q('Neuen Wochenbericht anlegen', '<ol><li>Auf der Startseite <strong>Neuer Wochenbericht</strong> tippen.</li><li><strong>Diese Woche</strong> oder <strong>Nächste Woche</strong> wählen, oder ein beliebiges Datum. Die Woche wird automatisch auf Montag bis Sonntag gesetzt.</li><li>Die Nummer zählt von selbst weiter. Nur ändern, wenn sie nicht stimmt.</li><li>Ausbildungsbereich wählen, z. B. AW, BBS oder Betrieb.</li></ol>')}
       ${q('Tage ausfüllen', '<ul><li>Alles wird beim Schreiben gespeichert. Du kannst den Bericht jederzeit schließen und später weitermachen, auch auf einem anderen Gerät.</li><li><strong>Einfügen:</strong> setzt einen Arbeitsort oder Textbaustein an der Stelle ein, wo der Cursor steht.</li><li><strong>Markiertes merken:</strong> Text im Feld markieren und tippen. Er wird ein Textbaustein für später.</li><li><strong>Ideen:</strong> Vorschläge aus deinen früheren Berichten und den anderen Tagen der Woche. Einfügen oder kopieren, danach selbst anpassen.</li><li><strong>Rückgängig:</strong> macht das letzte Einfügen, die letzte Idee oder Korrektur wieder rückgängig.</li><li>Über das kleine Auswahlfeld beim Tag stellst du Urlaub, Krank, Feiertag oder Berufsschule ein.</li></ul>')}
@@ -387,7 +382,7 @@
     try { let st; [{ reports }, next, st] = await Promise.all([api('GET', '/api/reports'), api('GET', '/api/report/next'), api('GET', '/api/state')]); S = { ...S, ...st }; }
     catch (x) { app.innerHTML = `<div class="msg err">${esc(x.message)}</div>`; return; }
     const sperren = Object.keys(S.settings.funktionen).filter(locked);
-    let html = `<p class="hello"><strong>Hallo ${esc(S.user.vorname)}!</strong> <span class="muted">${esc(S.user.firma)} · ${esc(S.user.abteilung)} · ${esc(S.user.standort)} (${S.user.arbeitsart === 'mobil' ? 'mobil' : 'fest'})</span></p>`;
+    let html = `<p class="hello"><strong>Hallo ${esc(S.user.vorname)}!</strong> <span class="muted">${esc(S.user.firma)}</span></p>`;
     if (sperren.length) html += `<div class="msg warn">Gerade gesperrt: ${sperren.map((k) => esc(S.settings.funktionen[k])).join(', ')}. ${esc(S.settings.sperrText)}</div>`;
     const sp = S.user.speicher;
     if (sp && sp.prozent >= 90) html += `<div class="msg ${sp.prozent >= 100 ? 'err' : 'warn'}">Dein Speicherplatz ist ${sp.prozent >= 100 ? 'voll' : 'fast voll'} (${mb(sp.used)} von ${mb(sp.quota)} MB). Bitte beim Admin mehr Speicher anfragen.</div>`;
@@ -1186,7 +1181,7 @@
     const beendet = azubis.filter((u) => u.endeErreicht).length;
     const card = (u) => `<div class="item">
       <div class="main"><strong>${u.vorname || u.nachname ? esc(`${u.vorname} ${u.nachname}`) : '<span class="muted">Noch nicht eingerichtet</span>'} <span class="muted">@${esc(u.username)}</span></strong>
-        <span class="muted">${u.firma ? esc(u.firma) : 'Firma –'}${u.abteilung ? ' · ' + esc(u.abteilung) : ''} · ${u.standort ? esc(u.standort) : 'Standort –'}${u.arbeitsart ? ` (${u.arbeitsart === 'mobil' ? 'mobil' : 'fest'})` : ''}</span><br>
+        <span class="muted">${u.firma ? esc(u.firma) : 'Firma –'}</span><br>
         ${u.role === 'admin' ? '' : `<span class="muted">${u.beruf ? esc(u.beruf) : 'Lehrberuf –'} · Ausbildungsende ${u.endJahr || '–'}</span><br>`}
         <span class="muted small-t">Dabei ${since(u.created)} · zuletzt aktiv ${ago(u.lastSeen)}${u.role === 'admin' ? '' : ` · ${u.reports} Berichte`}</span>
         ${u.role === 'admin' ? '' : speicherBar(u.speicher)}</div>
@@ -1199,7 +1194,7 @@
         <button class="small danger" data-u="${esc(u.id)}" data-a="delete">Löschen</button>`}
       </div></div>`;
     $('#adm').innerHTML = `<div class="card"><h2>Neues Konto</h2>
-      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma mit Abteilung, Standort (Stadt), fest oder mobil, Lehrberuf, Lehrjahr und Ausbildungsende ein.</p>
+      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma, Lehrberuf, Lehrjahr und Ausbildungsende ein.</p>
       <form id="nf" class="row"><input type="text" name="username" autocapitalize="none" required placeholder="z. B. carlo.w" class="grow">
       <select name="role" class="auto-w"><option value="azubi">Azubi</option><option value="admin">Admin</option></select><button class="primary">Anlegen</button></form>
       <div id="nerr"></div>
@@ -1249,10 +1244,8 @@
       if (a === 'edit') {
         const res = await modal(`<form><h2>@${esc(u.username)} bearbeiten</h2>
           <div class="grid"><div><label>Vorname</label><input type="text" name="vorname" value="${esc(u.vorname)}"></div><div><label>Nachname</label><input type="text" name="nachname" value="${esc(u.nachname)}"></div></div>
-          <label>Firma</label><input type="text" name="firma" value="${esc(u.firma)}"><label>Abteilung / Bereich</label><input type="text" name="abteilung" value="${esc(u.abteilung)}">
-          <label>Standort (Stadt)</label><input type="text" name="standort" value="${esc(u.standort)}">
+          <label>Firma</label><input type="text" name="firma" value="${esc(u.firma)}">
           <div class="grid"><div><label>Lehrberuf</label><input type="text" name="beruf" value="${esc(u.beruf)}"></div><div><label>Ausbildungsende (Jahr)</label><input type="number" name="endJahr" min="2000" max="2100" value="${esc(u.endJahr)}"></div></div>
-          <label>Arbeitsweise</label><select name="arbeitsart"><option value="">–</option><option value="fest" ${u.arbeitsart === 'fest' ? 'selected' : ''}>Fester Arbeitsplatz</option><option value="mobil" ${u.arbeitsart === 'mobil' ? 'selected' : ''}>Mobil</option></select>
           ${u.role === 'admin' ? '' : `<label>Speicherplatz in MB</label><input type="number" name="speicherMB" min="1" max="10000" value="${u.speicherMB || ''}" placeholder="leer = Standard für alle">
           <div class="hint">Belegt: ${mb(u.speicher.used)} MB. Leer lassen für den Standard.</div>`}
           <div class="actions"><button class="primary" data-m="form">Speichern</button><button type="button" data-m="no">Abbrechen</button></div></form>`);
