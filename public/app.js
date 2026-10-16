@@ -178,9 +178,11 @@
     nav();
     window.scrollTo(0, 0);
     const [, r, a, b] = location.hash.split('/');
-    if (r === 'hilfe') return viewHelp();
+    /* Geschlossener Bereich: ohne Anmeldung ist nur die Anmeldemaske sichtbar */
+    document.body.classList.toggle('guest', !S.user);
     if (S.setup) return viewSetup();
     if (!S.user) return viewLogin();
+    if (r === 'hilfe') return viewHelp();
     if (S.user.mustChange) return viewForcePw();
     if (S.missing.length) return viewProfileFirst();
     if (r === 'einstellungen') return viewSettings();
@@ -211,15 +213,14 @@
   }
   function viewLogin() {
     app.innerHTML = `<div class="card narrow">
-      <div class="lead"><img src="/icon.svg" width="44" height="44" alt=""><div><h1>Anmelden</h1><p class="muted">Dein digitales Berichtsheft</p></div></div>
+      <div class="lead"><img src="/icon.svg" width="44" height="44" alt=""><div><h1>Anmelden</h1><p class="muted">Geschlossener Bereich. Zugang nur mit Einladung.</p></div></div>
       <form id="f">
         <label>Benutzername</label><input type="text" name="username" autocomplete="username" autocapitalize="none" required>
         <label>Passwort</label><input type="password" name="password" autocomplete="current-password" required>
         <div id="err"></div>
         <div class="actions"><button class="primary">Anmelden</button></div>
       </form>
-      <p class="muted mt2"><strong>Neu hier?</strong> Benutzername und Startpasswort bekommst du vom Admin.<br><strong>Passwort vergessen?</strong> Ein neues Passwort kann nur der Admin erstellen. Bitte dort melden.</p>
-      <p class="muted small-t">${esc(HINWEIS)}</p></div>`;
+      <p class="muted mt2">Passwort vergessen? Bitte bei der Person melden, die dich eingeladen hat.</p></div>`;
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       await busy($('button', e.target), async () => {

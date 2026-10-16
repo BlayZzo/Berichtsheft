@@ -15,7 +15,7 @@ const { decodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.5.0';
+const VERSION = '3.6.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -489,7 +489,7 @@ function readBody(req, limit = 1.5e6) {
   });
 }
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
+const MIME = { '.txt': 'text/plain; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
 function serveStatic(req, res, pathname) {
   const rel = pathname === '/' ? '/index.html' : pathname;
   const file = path.join(PUBLIC, path.normalize(rel).replace(/^([/\\])+/, ''));
@@ -532,10 +532,10 @@ function cleanBausteine(list) {
 const routes = [];
 const route = (m, p, auth, fn) => routes.push({ m, p, auth, fn });
 
-route('GET', '/api/health', null, () => ({ ok: true, version: VERSION }));
+route('GET', '/api/health', null, (ctx) => (ctx.user || ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ctx.req.socket.remoteAddress) && !ctx.req.headers['x-forwarded-for'] ? { ok: true, version: VERSION } : { ok: true }));
 
 route('GET', '/api/state', null, (ctx) => ({
-  setup: needsSetup(), user: publicUser(ctx.user), version: VERSION, missing: ctx.user ? profileMissing(ctx.user) : [],
+  setup: needsSetup(), user: publicUser(ctx.user), version: ctx.user ? VERSION : undefined, missing: ctx.user ? profileMissing(ctx.user) : [],
   settings: ctx.user ? {
     arbeitstage: db.settings.arbeitstage, typen: W.TYPEN, vorbelegung: db.settings.vorbelegung,
     bearbeitbarTage: db.settings.bearbeitbarTage, bereiche: db.settings.bereiche,
