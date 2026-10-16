@@ -135,3 +135,63 @@ code { background: var(--soft); padding: .05rem .35rem; border-radius: 5px; font
 .nomargin { margin: 0 !important; }
 .grow { flex: 1; min-width: 10rem; }
 .center { text-align: center; }
+
+/* ---- Startseite ---- */
+.big { width: 100%; padding: 1rem; font-size: 1.1rem; border-radius: 14px; }
+.big .plus { font-size: 1.5rem; line-height: 1; margin-right: .2rem; }
+a.item.link { text-decoration: none; color: inherit; }
+a.item.link:hover { border-color: var(--brand); }
+.item .nr { flex: 0 0 auto; min-width: 2.6rem; height: 2.6rem; border-radius: 10px; background: var(--soft); color: var(--brand);
+  font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; padding: 0 .4rem; }
+
+/* ---- Bericht im Formular-Look ---- */
+.toprow { display: flex; align-items: center; gap: .5rem; margin-bottom: .75rem; }
+.back { text-decoration: none; font-weight: 600; }
+.sheet { background: #fff; color: #1c2330; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 10px rgba(16,24,40,.08); padding: 1rem; margin-bottom: 1rem; }
+.sheet .muted { color: #667085; }
+.sheet input, .sheet select, .sheet textarea { background: #fff; color: #1c2330; border-color: #cfd5de; }
+.sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: .8rem; }
+.sheet-title { font-weight: 800; font-size: 1.1rem; }
+.nrbox { display: flex; align-items: center; gap: .35rem; margin: 0; font-size: 1rem; font-weight: 800; white-space: nowrap; }
+.nrbox input { width: 5rem; font-weight: 700; text-align: center; padding: .35rem .4rem; }
+table.hdr { width: 100%; border-collapse: collapse; font-size: .9rem; margin-bottom: .9rem; }
+table.hdr th, table.hdr td { border: 1px solid #b8bfca; padding: .35rem .5rem; text-align: left; vertical-align: middle; }
+table.hdr th { font-weight: 500; color: #475467; width: 30%; }
+table.hdr td select { padding: .25rem .4rem; }
+.days { border: 1px solid #8f98a6; }
+.dhead, .drow { display: grid; grid-template-columns: 2rem 1fr 4.2rem; }
+.dhead { background: #e6e8ec; font-size: .78rem; color: #475467; }
+.dhead span { padding: .4rem .5rem; border-left: 1px solid #8f98a6; }
+.dhead span:first-child { border-left: 0; }
+.dhead span:last-child { font-style: italic; text-align: center; }
+.drow { border-top: 1px solid #8f98a6; }
+.dlabel { display: flex; align-items: center; justify-content: center; }
+.dlabel span { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 700; font-size: .85rem; letter-spacing: .02em; }
+.dtext { border-left: 1px solid #8f98a6; border-right: 1px solid #8f98a6; padding: .45rem; min-width: 0; }
+.dmeta { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-bottom: .35rem; font-size: .85rem; }
+.dmeta select { width: auto; padding: .2rem .35rem; font-size: .85rem; }
+.dtext textarea { min-height: 5.2rem; border-radius: 6px; }
+.dtext .readonly { background: none; padding: .2rem 0; white-space: pre-wrap; }
+.dhours { padding: .45rem .3rem; text-align: center; }
+.dhours input { padding: .35rem .2rem; text-align: center; }
+.drow.t-feiertag .dlabel span, .drow.t-urlaub .dlabel span, .drow.t-krank .dlabel span { color: var(--accent); }
+.toolong { display: block; color: var(--bad); font-size: .83rem; margin-top: .3rem; font-weight: 600; }
+.sigrow { display: grid; grid-template-columns: 9.5rem 1fr; align-items: end; gap: .3rem .8rem; margin-top: 1.4rem; max-width: 30rem; }
+.sigrow label { margin-top: 0; }
+.sigprev { border-bottom: 1px solid #1c2330; min-height: 3.2rem; display: flex; align-items: flex-end; }
+.sigprev img { max-height: 3rem; max-width: 100%; transform: rotate(-1deg); }
+.siglabel { grid-column: 1 / -1; font-size: .78rem; }
+.actionsbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; position: sticky; bottom: .5rem; z-index: 5; }
+@media (max-width: 720px) { .actionsbar { bottom: 4.6rem; } }
+.full { flex-basis: 100%; }
+.card.done { border-color: var(--ok); }
+@media (max-width: 480px) {
+  .sheet { padding: .6rem; border-radius: 4px; }
+  table.hdr { font-size: .8rem; }
+  table.hdr th { width: auto; }
+  .dhead, .drow { grid-template-columns: 1.6rem 1fr 3.4rem; }
+}
+table.hdr { table-layout: fixed; }
+table.hdr th, table.hdr td { overflow-wrap: anywhere; }
+table.hdr td select { width: 100%; }
+.sheet-title { overflow-wrap: anywhere; }

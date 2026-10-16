@@ -9,10 +9,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const W = require('./lib/weeks');
-const { render } = require('./lib/render');
+const { fill, fitDay } = require('./lib/fill');
 const { decodePng } = require('./lib/png');
 
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -39,33 +39,20 @@ const SECURITY_HEADERS = {
 /* ---------- Daten ---------- */
 
 const DEFAULT_SETTINGS = {
-  betrieb: '',
-  ausbilder: '',
-  beruf: '',
   bundesland: 'HB',
   arbeitstage: [0, 1, 2, 3, 4],
-  dateiname: '{vorname}_{nachname}_Nr{nr3}',
+  bereiche: ['AW', 'BBS', 'Betrieb'],
+  dateiname: 'Berichtsheft_{nachname}_NR{nr}',
   bearbeitbarTage: 90,
   ltUrl: '',
   ltAus: false,
   vorbelegung: {
     betrieb: '',
-    schule: 'Berufsschule: ',
+    schule: '',
     urlaub: 'Urlaub',
     krank: 'Arbeitsunfähig (krank)',
     feiertag: 'Feiertag: {name}',
     frei: ''
-  },
-  vorlage: {
-    titel: 'Ausbildungsnachweis',
-    untertitel: 'Wöchentlicher Ausbildungsnachweis nach § 13 BBiG',
-    spalteTaetigkeit: 'Ausgeführte Tätigkeiten, Unterweisungen, Berufsschulthemen',
-    bemerkungTitel: 'Bemerkungen',
-    hinweis: 'Durch die nachfolgende Unterschrift wird die Richtigkeit und Vollständigkeit der obigen Angaben bestätigt.',
-    unterschriftAzubi: 'Datum, Unterschrift Auszubildende/r',
-    unterschriftAusbilder: 'Datum, Unterschrift Ausbilder/in',
-    stundenZeigen: true,
-    ausbilderFeld: true
   }
 };
 
@@ -191,50 +178,44 @@ function setupCode() {
 /* ---------- Hilfen ---------- */
 
 const str = (v, max = 200) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, max).trim();
-const text = (v, max = 6000) => String(v ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, max);
+const text = (v, max = 4000) => String(v ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, max);
 const num = (v, min, max, def) => { const x = Number(String(v).replace(',', '.')); return Number.isFinite(x) ? Math.min(max, Math.max(min, x)) : def; };
+const heute = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
 
 function publicUser(u) {
   if (!u) return null;
   return {
     id: u.id, username: u.username, role: u.role, mustChange: !!u.mustChange,
-    vorname: u.vorname, nachname: u.nachname, beruf: u.beruf, beginn: u.beginn, ende: u.ende, abteilung: u.abteilung,
+    vorname: u.vorname, nachname: u.nachname, beginn: u.beginn, ende: u.ende, bereich: u.bereich || '',
     schultage: u.schultage || [], stunden: u.stunden, schulstunden: u.schulstunden, hasSignature: !!u.sig,
     woerterbuch: u.woerterbuch || [], active: u.active
   };
 }
 const profileMissing = (u) => ['vorname', 'nachname', 'beginn'].filter((k) => !u[k]);
 
-function kopfFor(u) {
-  return {
-    vorname: u.vorname || '', nachname: u.nachname || '',
-    beruf: u.beruf || db.settings.beruf || '', betrieb: db.settings.betrieb || '',
-    ausbilder: u.ausbilder || db.settings.ausbilder || '', abteilung: u.abteilung || ''
-  };
-}
-
 function deadlineOf(r) {
-  if (r.status !== 'abgeschlossen' && !r.firstSignedAt) return null;
+  if (!r.firstSignedAt) return null;
   const base = new Date(r.firstSignedAt).getTime() + (Number(db.settings.bearbeitbarTage) || 90) * 864e5;
   const extra = r.freiBis ? new Date(r.freiBis).getTime() : 0;
   return new Date(Math.max(base, extra)).toISOString();
 }
-function canEdit(r, u) {
-  if (!r || r.status !== 'abgeschlossen') return true;
-  return Date.now() <= new Date(deadlineOf(r)).getTime() || false;
+const canEdit = (r) => r.status !== 'abgeschlossen' || Date.now() <= new Date(deadlineOf(r)).getTime();
+/* Wie im Papier-Formular: Woche von Montag bis Sonntag */
+const lastDay = (r) => W.addDays(r.weekStart, 6);
+const deKurz = (s) => W.de(s).replace(/\.(\d{2})(\d{2})$/, '.$2');
+
+function nameOf(r) {
+  const k = r.status === 'abgeschlossen' && r.kopf ? r.kopf : db.users[r.userId] || {};
+  return { vorname: k.vorname || '', nachname: k.nachname || '' };
 }
-function reportView(r, u) {
-  return { ...r, deadline: deadlineOf(r), editable: canEdit(r, u), ownerId: r.userId, history: undefined, versions: (r.history || []).length };
-}
-function fileName(r, kopf) {
-  const iso = W.isoWeek(r.weekStart);
-  const last = r.days.length ? r.days[r.days.length - 1].date : r.weekStart;
+function fileName(r) {
+  const k = nameOf(r), iso = W.isoWeek(r.weekStart);
   const vars = {
-    vorname: kopf.vorname, nachname: kopf.nachname, nr: String(r.nr), nr3: String(r.nr).padStart(3, '0'),
-    kw: String(iso.week).padStart(2, '0'), jahr: String(iso.year), von: W.de(r.weekStart), bis: W.de(last),
-    ajahr: String(r.ausbildungsjahr), beruf: kopf.beruf
+    vorname: k.vorname, nachname: k.nachname, nr: String(r.nr), nr3: String(r.nr).padStart(3, '0'),
+    kw: String(iso.week).padStart(2, '0'), jahr: String(iso.year), von: W.de(r.weekStart), bis: W.de(lastDay(r)),
+    ajahr: String(r.ausbildungsjahr || ''), bereich: r.bereich || ''
   };
-  let name = (db.settings.dateiname || DEFAULT_SETTINGS.dateiname).replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
+  let name = (db.settings.dateiname || DEFAULT_SETTINGS.dateiname).replace(/\{(\w+)\}/g, (m, key) => vars[key] ?? m);
   name = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, '_').slice(0, 150) || 'Bericht';
   return name + '.pdf';
 }
@@ -242,7 +223,7 @@ function asciiName(name) {
   return name.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss').replace(/[^\x20-\x7e]/g, '_');
 }
 function contentHash(r) {
-  const c = JSON.stringify({ k: r.kopf, d: r.days, b: r.bemerkung, a: r.abteilung, n: r.nr, j: r.ausbildungsjahr, s: r.signedAt, g: r.sig });
+  const c = JSON.stringify({ k: r.kopf, d: r.days, b: r.bereich, n: r.nr, j: r.ausbildungsjahr, s: r.signedAt, t: r.sigDate, g: r.sig });
   return crypto.createHash('sha256').update(c).digest('hex');
 }
 
@@ -265,16 +246,48 @@ function loadSignature(id) {
   try { return decodePng(fs.readFileSync(path.join(SIG_DIR, id + '.png'))); } catch { return null; }
 }
 
-function buildPdf(r) {
-  const owner = db.users[r.userId];
+/* Tage auf die 7 Zeilen der Vorlage (Mo-So) verteilen */
+function rowsOf(r) {
+  const rows = [null, null, null, null, null, null, null];
+  for (const d of r.days) rows[W.weekday(d.date)] = d;
+  return rows;
+}
+const NO_HOURS = new Set(['urlaub', 'krank', 'feiertag', 'frei']);
+function fitsOf(r) { return rowsOf(r).map((d, i) => (d ? fitDay(d.text, i) : null)); }
+
+function buildPdf(r, { blank = false } = {}) {
   const done = r.status === 'abgeschlossen';
-  const kopf = done && r.kopf ? r.kopf : kopfFor(owner);
-  const view = { ...r, signedAt: done ? r.signedAt : null, korrigiertAm: done ? r.korrigiertAm : null };
-  const footer = done
-    ? `Digital abgeschlossen am ${W.de(r.signedAt.slice(0, 10))} ${new Date(r.signedAt).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })} Uhr  ·  Prüfsumme ${r.hash.slice(0, 16)}`
-    : 'ENTWURF – noch nicht abgeschlossen und nicht unterschrieben';
-  const pdf = render({ report: view, kopf, vorlage: db.settings.vorlage, signature: done ? loadSignature(r.sig) : null, footer });
-  return { pdf, name: fileName(r, kopf) };
+  const k = nameOf(r);
+  const rows = rowsOf(r).map((d) => d && ({ text: d.text, hours: NO_HOURS.has(d.type) && !Number(d.hours) ? null : d.hours }));
+  let footer = '';
+  if (done) {
+    footer = `Digital unterschrieben am ${W.de(r.signedAt.slice(0, 10))}`;
+    if (r.korrigiertAm) footer += ` (korrigiert, erstmals ${W.de(r.firstSignedAt.slice(0, 10))})`;
+    footer += `  ·  Nr. ${r.nr}  ·  Prüfsumme ${r.hash.slice(0, 16)}`;
+  } else if (!blank) footer = 'ENTWURF – noch nicht unterschrieben';
+  const pdf = fill(blank ? { days: [] } : {
+    name: `${k.vorname} ${k.nachname}`.trim(), ajahr: r.ausbildungsjahr ? String(r.ausbildungsjahr) : '', bereich: r.bereich,
+    von: deKurz(r.weekStart), bis: deKurz(lastDay(r)), days: rows,
+    sigDate: done ? W.de(r.sigDate) : '', signature: done ? loadSignature(r.sig) : null, seed: r.id + r.signedAt, footer
+  });
+  return { pdf, name: fileName(r) };
+}
+
+function reportView(r) {
+  return {
+    id: r.id, nr: r.nr, weekStart: r.weekStart, bereich: r.bereich, ausbildungsjahr: r.ausbildungsjahr, days: r.days,
+    status: r.status, sigDate: r.sigDate, signedAt: r.signedAt, firstSignedAt: r.firstSignedAt, korrigiertAm: r.korrigiertAm,
+    deadline: deadlineOf(r), editable: canEdit(r), file: fileName(r), updated: r.updated,
+    kw: W.isoWeek(r.weekStart).week, jahr: W.isoWeek(r.weekStart).year, bis: lastDay(r),
+    holidays: r.days.map((d) => W.holidayName(d.date, db.settings.bundesland)),
+    fits: fitsOf(r).map((f) => (f ? { fits: f.fits, over: f.over || 0 } : null))
+  };
+}
+function listItem(r) {
+  return {
+    id: r.id, nr: r.nr, weekStart: r.weekStart, bis: lastDay(r), bereich: r.bereich, status: r.status, signedAt: r.signedAt,
+    updated: r.updated, deadline: deadlineOf(r), editable: canEdit(r), file: fileName(r), kw: W.isoWeek(r.weekStart).week
+  };
 }
 
 /* ---------- Rechtschreibung (LanguageTool) ---------- */
@@ -345,7 +358,6 @@ function weekParam(v) {
   if (!W.isDate(s)) fail(400, 'Ungültiges Datum.');
   return W.mondayOf(s);
 }
-function getReport(userId, weekStart) { return db.reports[`${userId}_${weekStart}`]; }
 
 function cleanDays(input, weekStart) {
   if (!Array.isArray(input) || input.length > 7) fail(400, 'Ungültige Tage.');
@@ -369,7 +381,7 @@ route('GET', '/api/state', null, (ctx) => ({
   setup: needsSetup(), user: publicUser(ctx.user), version: VERSION,
   settings: ctx.user ? {
     bundesland: db.settings.bundesland, arbeitstage: db.settings.arbeitstage, typen: W.TYPEN, vorbelegung: db.settings.vorbelegung,
-    bearbeitbarTage: db.settings.bearbeitbarTage, betrieb: db.settings.betrieb, beruf: db.settings.beruf, ltAus: db.settings.ltAus
+    bearbeitbarTage: db.settings.bearbeitbarTage, bereiche: db.settings.bereiche, ltAus: db.settings.ltAus
   } : null
 }));
 
@@ -384,7 +396,7 @@ route('POST', '/api/setup', null, (ctx) => {
   const p = pwProblem(b.password); if (p) fail(400, p);
   const id = crypto.randomUUID();
   const { salt, hash } = hashPw(b.password);
-  db.users[id] = { id, username, salt, hash, role: 'admin', active: true, created: new Date().toISOString(), vorname: str(b.vorname, 60), nachname: str(b.nachname, 60), stunden: 8, schulstunden: 8, schultage: [] };
+  db.users[id] = { id, username, salt, hash, role: 'admin', active: true, created: new Date().toISOString(), vorname: str(b.vorname, 60), nachname: str(b.nachname, 60), stunden: 7.6, schulstunden: 7.6, schultage: [] };
   saveNow();
   try { fs.unlinkSync(SETUP_FILE); } catch {}
   startSession(ctx.res, db.users[id]);
@@ -426,11 +438,10 @@ route('POST', '/api/me', 'user', (ctx) => {
   const u = ctx.user, b = ctx.body;
   if ('vorname' in b) u.vorname = str(b.vorname, 60);
   if ('nachname' in b) u.nachname = str(b.nachname, 60);
-  if ('beruf' in b) u.beruf = str(b.beruf, 120);
-  if ('abteilung' in b) u.abteilung = str(b.abteilung, 120);
+  if ('bereich' in b) u.bereich = str(b.bereich, 80);
   if ('beginn' in b) { const v = str(b.beginn, 10); if (v && !W.isDate(v)) fail(400, 'Ausbildungsbeginn ungültig.'); u.beginn = v; }
   if ('ende' in b) { const v = str(b.ende, 10); if (v && !W.isDate(v)) fail(400, 'Ausbildungsende ungültig.'); u.ende = v; }
-  if ('schultage' in b) u.schultage = (Array.isArray(b.schultage) ? b.schultage : []).map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 5).slice(0, 6);
+  if ('schultage' in b) u.schultage = (Array.isArray(b.schultage) ? b.schultage : []).map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).slice(0, 7);
   if ('stunden' in b) u.stunden = num(b.stunden, 0, 24, 8);
   if ('schulstunden' in b) u.schulstunden = num(b.schulstunden, 0, 24, 8);
   save();
@@ -467,96 +478,134 @@ route('POST', '/api/check', 'user', async (ctx) => {
   return spellcheck(ctx.user, t);
 });
 
-route('GET', '/api/week', 'user', (ctx) => {
-  const u = ctx.user, ws = weekParam(ctx.query.get('start'));
-  const missing = profileMissing(u);
-  const r = getReport(u.id, ws);
-  const auto = missing.length ? null : W.buildWeek(u, db.settings, ws);
-  const iso = W.isoWeek(ws);
-  return {
-    weekStart: ws, kw: iso.week, jahr: iso.year, missing,
-    report: r ? reportView(r, u) : null,
-    auto,
-    holidays: (auto ? auto.days : []).map((d) => W.holidayName(d.date, db.settings.bundesland)),
-    hasSignature: !!u.sig
-  };
+/* ---- Berichte ---- */
+
+const ownReports = (uid) => Object.values(db.reports).filter((r) => r.userId === uid);
+function findReport(ctx, id, write) {
+  const r = db.reports[str(id, 40)];
+  if (!r) fail(404, 'Bericht nicht gefunden.');
+  if (r.userId !== ctx.user.id && !(ctx.user.role === 'admin' && !write)) fail(404, 'Bericht nicht gefunden.');
+  return r;
+}
+
+/* Vorschlag fuer einen neuen Bericht: Woche nach dem letzten Bericht, Nummer = hoechste + 1 */
+route('GET', '/api/report/next', 'user', (ctx) => {
+  const u = ctx.user, list = ownReports(u.id);
+  const thisWeek = W.mondayOf(heute());
+  let weekStart = thisWeek, nr = 1;
+  if (list.length) {
+    const latest = list.reduce((a, b) => (a.weekStart > b.weekStart ? a : b));
+    weekStart = W.addDays(latest.weekStart, 7);
+    nr = Math.max(...list.map((r) => Number(r.nr) || 0)) + 1;
+  } else if (W.isDate(u.beginn)) {
+    nr = Math.max(1, W.reportNr(u.beginn, weekStart));
+  }
+  return { weekStart, nr, bereich: u.bereich || db.settings.bereiche[0] || '', missing: profileMissing(u), hasSignature: !!u.sig };
 });
 
-route('POST', '/api/week', 'user', (ctx) => {
-  const u = ctx.user, b = ctx.body, ws = weekParam(b.weekStart);
-  if (profileMissing(u).length) fail(400, 'Bitte zuerst in den Einstellungen Name und Ausbildungsbeginn eintragen.');
-  let r = getReport(u.id, ws);
-  if (r && r.status === 'abgeschlossen') fail(409, 'Dieser Bericht ist abgeschlossen. Zum Ändern zuerst „Nachträglich bearbeiten“ wählen.');
+/* Ganze Woche Berufsschule (z. B. Bereich "BBS"): alle normalen Tage als Schultage vorbelegen */
+function schoolWeek(days, bereich) {
+  if (!/\b(BBS|Berufsschule|Schule)\b/i.test(bereich)) return days;
+  return days.map((d) => (d.type === 'betrieb' ? { ...d, type: 'schule', text: W.fillText('schule', db.settings, ''), hours: d.hours } : d));
+}
+
+route('POST', '/api/report/new', 'user', (ctx) => {
+  const u = ctx.user, b = ctx.body;
+  if (profileMissing(u).length) fail(400, 'Bitte zuerst in den Einstellungen Vorname, Nachname und Ausbildungsbeginn eintragen.');
+  const ws = W.mondayOf(str(b.weekStart, 10) || heute());
+  if (!W.isDate(ws)) fail(400, 'Ungültige Woche.');
+  const dup = ownReports(u.id).find((r) => r.weekStart === ws);
+  if (dup) return { id: dup.id, existed: true };
   const auto = W.buildWeek(u, db.settings, ws);
-  if (auto.nr < 1) fail(400, 'Diese Woche liegt vor dem Ausbildungsbeginn.');
-  if (!r) r = db.reports[`${u.id}_${ws}`] = { id: crypto.randomBytes(9).toString('base64url'), userId: u.id, weekStart: ws, status: 'entwurf', created: new Date().toISOString(), history: [] };
-  r.nr = auto.nr; r.ausbildungsjahr = auto.ausbildungsjahr;
-  r.days = cleanDays(b.days, ws);
-  r.abteilung = str(b.abteilung, 120);
-  r.bemerkung = text(b.bemerkung, 3000);
-  r.updated = new Date().toISOString();
-  save();
-  return { report: reportView(r, u) };
-});
-
-route('POST', '/api/week/finish', 'user', (ctx) => {
-  const u = ctx.user, ws = weekParam(ctx.body.weekStart);
-  const r = getReport(u.id, ws);
-  if (!r) fail(404, 'Bitte den Bericht zuerst speichern.');
-  if (r.status === 'abgeschlossen') fail(409, 'Der Bericht ist schon abgeschlossen.');
-  if (!u.sig || !loadSignature(u.sig)) fail(400, 'Bitte zuerst in den Einstellungen deine Unterschrift hinterlegen.');
-  const heute = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
-  const lastDay = r.days.length ? r.days[r.days.length - 1].date : ws;
-  if (lastDay > heute) fail(400, `Diese Woche kannst du erst ab ${W.de(lastDay)} abschließen.`);
-  const empty = r.days.filter((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim().replace(/^Berufsschule:\s*$/, ''));
-  if (empty.length) fail(400, `Bitte noch ausfüllen: ${empty.map((d) => W.KURZ[W.weekday(d.date)] + ' ' + W.deShort(d.date)).join(', ')}`);
-  const now = new Date().toISOString();
-  r.status = 'abgeschlossen';
-  r.signedAt = now;
-  r.firstSignedAt ||= now;
-  if (r.firstSignedAt !== now) r.korrigiertAm = now;
-  r.kopf = kopfFor(u);
-  r.sig = u.sig;
-  r.hash = contentHash(r);
+  const id = crypto.randomBytes(9).toString('base64url');
+  db.reports[id] = {
+    id, userId: u.id, weekStart: ws, nr: Math.round(num(b.nr, 1, 9999, 1)), bereich: str(b.bereich, 80),
+    ausbildungsjahr: auto.ausbildungsjahr, days: schoolWeek(auto.days, str(b.bereich, 80)), status: 'entwurf',
+    created: new Date().toISOString(), updated: new Date().toISOString(), history: []
+  };
   saveNow();
-  return { report: reportView(r, u), file: fileName(r, r.kopf) };
-});
-
-route('POST', '/api/week/reopen', 'user', (ctx) => {
-  const u = ctx.user, ws = weekParam(ctx.body.weekStart);
-  const r = getReport(u.id, ws);
-  if (!r || r.status !== 'abgeschlossen') fail(400, 'Der Bericht ist nicht abgeschlossen.');
-  if (!canEdit(r, u)) fail(403, 'Die Frist zum Bearbeiten ist abgelaufen. Der Admin kann sie verlängern.');
-  r.history ||= [];
-  r.history.push({ days: r.days, bemerkung: r.bemerkung, abteilung: r.abteilung, signedAt: r.signedAt, hash: r.hash, kopf: r.kopf, sig: r.sig });
-  if (r.history.length > 20) r.history.shift();
-  r.status = 'entwurf';
-  save();
-  return { report: reportView(r, u) };
+  return { id };
 });
 
 route('GET', '/api/reports', 'user', (ctx) => {
   const uid = ctx.user.role === 'admin' && ctx.query.get('user') ? ctx.query.get('user') : ctx.user.id;
-  const owner = db.users[uid];
-  if (!owner) fail(404, 'Unbekanntes Konto.');
-  const list = Object.values(db.reports).filter((r) => r.userId === uid).sort((a, b) => b.weekStart.localeCompare(a.weekStart))
-    .map((r) => ({ id: r.id, weekStart: r.weekStart, nr: r.nr, status: r.status, signedAt: r.signedAt, deadline: deadlineOf(r), editable: canEdit(r, owner), korrigiertAm: r.korrigiertAm, file: fileName(r, r.kopf || kopfFor(owner)) }));
-  return { reports: list };
+  if (!db.users[uid]) fail(404, 'Unbekanntes Konto.');
+  return { reports: ownReports(uid).sort((a, b) => b.weekStart.localeCompare(a.weekStart)).map(listItem) };
+});
+
+route('GET', '/api/report', 'user', (ctx) => ({ report: reportView(findReport(ctx, ctx.query.get('id'))) }));
+
+route('POST', '/api/report/save', 'user', (ctx) => {
+  const r = findReport(ctx, ctx.body.id, true), b = ctx.body;
+  if (r.status === 'abgeschlossen') fail(409, 'Dieser Bericht ist unterschrieben. Zum Ändern zuerst „Nachträglich bearbeiten“ wählen.');
+  if ('nr' in b) r.nr = Math.round(num(b.nr, 1, 9999, r.nr));
+  if ('bereich' in b) r.bereich = str(b.bereich, 80);
+  if ('days' in b) r.days = cleanDays(b.days, r.weekStart);
+  r.updated = new Date().toISOString();
+  save();
+  return { report: reportView(r) };
+});
+
+route('POST', '/api/report/finish', 'user', (ctx) => {
+  const u = ctx.user, r = findReport(ctx, ctx.body.id, true);
+  if (r.status === 'abgeschlossen') fail(409, 'Der Bericht ist schon unterschrieben.');
+  if (!u.sig || !loadSignature(u.sig)) fail(400, 'Bitte zuerst in den Einstellungen deine Unterschrift hinterlegen.');
+  const date = str(ctx.body.date, 10) || heute();
+  if (!W.isDate(date)) fail(400, 'Bitte ein gültiges Datum für die Unterschrift wählen.');
+  if (date > heute()) fail(400, 'Das Datum der Unterschrift darf nicht in der Zukunft liegen.');
+  const empty = r.days.filter((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim().replace(/^Berufsschule:\s*$/, ''));
+  if (empty.length) fail(400, `Bitte noch ausfüllen: ${empty.map((d) => W.KURZ[W.weekday(d.date)] + ' ' + W.deShort(d.date)).join(', ')}`);
+  const long = fitsOf(r).map((f, i) => (f && !f.fits ? W.KURZ[i] : null)).filter(Boolean);
+  if (long.length) fail(400, `Zu viel Text für das Feld: ${long.join(', ')}. Bitte etwas kürzen.`);
+  const now = new Date().toISOString();
+  r.status = 'abgeschlossen';
+  r.signedAt = now;
+  r.sigDate = date;
+  r.firstSignedAt ||= now;
+  if (r.firstSignedAt !== now) r.korrigiertAm = now;
+  r.kopf = { vorname: u.vorname, nachname: u.nachname };
+  r.sig = u.sig;
+  r.hash = contentHash(r);
+  saveNow();
+  return { report: reportView(r) };
+});
+
+route('POST', '/api/report/reopen', 'user', (ctx) => {
+  const r = findReport(ctx, ctx.body.id, true);
+  if (r.status !== 'abgeschlossen') fail(400, 'Der Bericht ist nicht unterschrieben.');
+  if (!canEdit(r)) fail(403, 'Die Frist zum Bearbeiten ist abgelaufen. Der Admin kann sie verlängern.');
+  r.history ||= [];
+  r.history.push({ days: r.days, nr: r.nr, bereich: r.bereich, signedAt: r.signedAt, sigDate: r.sigDate, hash: r.hash, kopf: r.kopf, sig: r.sig });
+  if (r.history.length > 20) r.history.shift();
+  r.status = 'entwurf';
+  save();
+  return { report: reportView(r) };
+});
+
+route('POST', '/api/report/delete', 'user', (ctx) => {
+  const r = findReport(ctx, ctx.body.id, true);
+  if (r.firstSignedAt) fail(400, 'Unterschriebene Berichte können nicht gelöscht werden.');
+  delete db.reports[r.id];
+  save();
+  return { ok: true };
 });
 
 route('GET', '/api/pdf', 'user', (ctx) => {
-  const id = str(ctx.query.get('id'), 40);
-  const r = Object.values(db.reports).find((x) => x.id === id);
-  if (!r || (r.userId !== ctx.user.id && ctx.user.role !== 'admin')) fail(404, 'Bericht nicht gefunden.');
+  const r = findReport(ctx, ctx.query.get('id'));
   const { pdf, name } = buildPdf(r);
   const disp = ctx.query.get('view') === '1' ? 'inline' : 'attachment';
   return { raw: pdf, type: 'application/pdf', headers: { 'Content-Disposition': `${disp}; filename="${asciiName(name)}"; filename*=UTF-8''${encodeURIComponent(name)}` } };
 });
 
+route('GET', '/api/blank', 'user', () => {
+  const { pdf } = buildPdf({ days: [], weekStart: heute(), nr: 0, status: 'entwurf' }, { blank: true });
+  return { raw: pdf, type: 'application/pdf', headers: { 'Content-Disposition': 'inline; filename="Vorlage.pdf"' } };
+});
+
 /* ---- Admin ---- */
 
 route('GET', '/api/admin/users', 'admin', () => ({
-  users: Object.values(db.users).map((u) => ({ ...publicUser(u), lastLogin: u.lastLogin || null, reports: Object.values(db.reports).filter((r) => r.userId === u.id).length }))
+  users: Object.values(db.users).map((u) => ({ ...publicUser(u), lastLogin: u.lastLogin || null, reports: ownReports(u.id).length }))
     .sort((a, b) => a.username.localeCompare(b.username))
 }));
 
@@ -565,12 +614,11 @@ route('POST', '/api/admin/users', 'admin', (ctx) => {
   const username = str(b.username, 40).toLowerCase();
   if (!/^[a-z0-9._-]{3,40}$/.test(username)) fail(400, 'Benutzername: 3 bis 40 Zeichen, nur Buchstaben, Zahlen, Punkt, Minus und Unterstrich.');
   if (Object.values(db.users).some((u) => u.username === username)) fail(400, 'Diesen Benutzernamen gibt es schon.');
-  const pw = tempPassword(), id = crypto.randomUUID();
   if (b.beginn && !W.isDate(str(b.beginn, 10))) fail(400, 'Ausbildungsbeginn ungültig.');
+  const pw = tempPassword(), id = crypto.randomUUID();
   db.users[id] = {
     id, username, ...hashPw(pw), role: b.role === 'admin' ? 'admin' : 'azubi', active: true, mustChange: true, created: new Date().toISOString(),
-    vorname: str(b.vorname, 60), nachname: str(b.nachname, 60), beruf: str(b.beruf, 120), beginn: str(b.beginn, 10), abteilung: str(b.abteilung, 120),
-    schultage: [], stunden: 8, schulstunden: 8
+    vorname: str(b.vorname, 60), nachname: str(b.nachname, 60), beginn: str(b.beginn, 10), schultage: [], stunden: 7.6, schulstunden: 7.6
   };
   save();
   return { user: publicUser(db.users[id]), password: pw };
@@ -589,53 +637,32 @@ route('POST', '/api/admin/user', 'admin', (ctx) => {
     if (u.id === ctx.user.id && b.role !== 'admin') fail(400, 'Du kannst dir die Admin-Rechte nicht selbst nehmen.');
     u.role = b.role === 'admin' ? 'admin' : 'azubi';
   }
-  for (const k of ['vorname', 'nachname', 'beruf', 'abteilung', 'ausbilder']) if (k in b) u[k] = str(b[k], 120);
-  if ('beginn' in b) { const v = str(b.beginn, 10); if (v && !W.isDate(v)) fail(400, 'Ausbildungsbeginn ungültig.'); u.beginn = v; }
   save();
   return { user: publicUser(u), ...out };
 });
 
 route('POST', '/api/admin/extend', 'admin', (ctx) => {
-  const r = Object.values(db.reports).find((x) => x.id === str(ctx.body.id, 40));
+  const r = db.reports[str(ctx.body.id, 40)];
   if (!r) fail(404, 'Bericht nicht gefunden.');
-  const days = num(ctx.body.days, 1, 365, 30);
-  r.freiBis = new Date(Date.now() + days * 864e5).toISOString();
+  r.freiBis = new Date(Date.now() + num(ctx.body.days, 1, 365, 30) * 864e5).toISOString();
   save();
   return { deadline: deadlineOf(r) };
 });
 
-route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER, defaults: DEFAULT_SETTINGS }));
+route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER }));
 
 route('POST', '/api/admin/settings', 'admin', (ctx) => {
   const b = ctx.body.settings || {}, s = db.settings;
-  if ('betrieb' in b) s.betrieb = str(b.betrieb, 160);
-  if ('ausbilder' in b) s.ausbilder = str(b.ausbilder, 120);
-  if ('beruf' in b) s.beruf = str(b.beruf, 120);
   if ('bundesland' in b && W.BUNDESLAENDER[b.bundesland]) s.bundesland = b.bundesland;
   if ('arbeitstage' in b) { const t = (Array.isArray(b.arbeitstage) ? b.arbeitstage : []).map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6); s.arbeitstage = [...new Set(t)].sort(); if (!s.arbeitstage.length) s.arbeitstage = [0, 1, 2, 3, 4]; }
+  if ('bereiche' in b) { const l = (Array.isArray(b.bereiche) ? b.bereiche : []).map((x) => str(x, 80)).filter(Boolean).slice(0, 20); if (!l.length) fail(400, 'Mindestens ein Bereich wird gebraucht.'); s.bereiche = [...new Set(l)]; }
   if ('dateiname' in b) { const d = str(b.dateiname, 120); if (!d) fail(400, 'Das Namensschema darf nicht leer sein.'); s.dateiname = d; }
   if ('bearbeitbarTage' in b) s.bearbeitbarTage = num(b.bearbeitbarTage, 1, 3650, 90);
   if ('ltUrl' in b) { const v = str(b.ltUrl, 200); if (v && !/^https?:\/\/[^\s]+$/.test(v)) fail(400, 'Adresse der Rechtschreibprüfung ungültig.'); s.ltUrl = v; }
   if ('ltAus' in b) s.ltAus = !!b.ltAus;
   if (b.vorbelegung) for (const k of Object.keys(W.TYPEN)) if (k in b.vorbelegung) s.vorbelegung[k] = str(b.vorbelegung[k], 200);
-  if (b.vorlage) {
-    for (const k of ['titel', 'untertitel', 'spalteTaetigkeit', 'bemerkungTitel', 'unterschriftAzubi', 'unterschriftAusbilder']) if (k in b.vorlage) s.vorlage[k] = str(b.vorlage[k], 200);
-    if ('hinweis' in b.vorlage) s.vorlage.hinweis = text(b.vorlage.hinweis, 1500).trim();
-    if ('stundenZeigen' in b.vorlage) s.vorlage.stundenZeigen = !!b.vorlage.stundenZeigen;
-    if ('ausbilderFeld' in b.vorlage) s.vorlage.ausbilderFeld = !!b.vorlage.ausbilderFeld;
-  }
   save();
   return { settings: s };
-});
-
-/* Vorschau der Vorlage mit Beispieldaten */
-route('GET', '/api/admin/preview', 'admin', (ctx) => {
-  const u = ctx.user;
-  const fake = { vorname: u.vorname || 'Max', nachname: u.nachname || 'Muster', beginn: u.beginn || W.addDays(W.mondayOf(new Date().toISOString().slice(0, 10)), -400), schultage: [1], stunden: 8, schulstunden: 8 };
-  const r = W.buildWeek(fake, db.settings, W.mondayOf(new Date().toISOString().slice(0, 10)));
-  r.days.forEach((d) => { if (d.type === 'betrieb') d.text = 'Beispieltext: Hier stehen die Tätigkeiten des Tages.'; if (d.type === 'schule') d.text += 'Lernfeld 3, Deutsch, Wirtschaft'; });
-  const pdf = render({ report: { ...r, signedAt: null }, kopf: { ...kopfFor(u), vorname: fake.vorname, nachname: fake.nachname }, vorlage: db.settings.vorlage, signature: null, footer: 'VORSCHAU der Vorlage' });
-  return { raw: pdf, type: 'application/pdf', headers: { 'Content-Disposition': 'inline; filename="Vorschau.pdf"' } };
 });
 
 async function handle(req, res) {

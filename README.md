@@ -5,24 +5,27 @@ Rechtschreib- und Grammatikprüfung, digitaler Unterschrift und PDF-Export.
 Eigenständiges Programm unter https://bh-bremen.de
 
 ## Was es kann
-- **Admin** legt Konten an (vorläufiges Passwort, beim ersten Anmelden muss ein eigenes gewählt werden),
-  sperrt Konten, setzt Passwörter zurück, sieht alle Berichte und kann Bearbeitungsfristen verlängern.
-- **Blanko-Vorlage** (Admin > Vorlage): Überschrift, Untertitel, Spalten, Hinweistext, Beschriftung der
-  Unterschriften und vorausgefüllte Texte je Tagesart. Mit PDF-Vorschau.
-- **Automatisch ausgefüllt:** Name, Beruf, Betrieb, Ausbilder, Kalenderwoche, Datum von/bis,
-  laufende Nummer (Woche des Ausbildungsbeginns = Nr. 1), Ausbildungsjahr, Berufsschultage,
-  gesetzliche Feiertage des Bundeslands, Stunden.
-- **Rechtschreibung und Grammatik:** LanguageTool läuft auf dem eigenen Server, die Texte verlassen ihn nicht.
-  Fehler werden beim Schreiben angezeigt, Vorschläge per Antippen übernommen, Fachwörter ins eigene Wörterbuch.
-- **Unterschrift** einmal in den Einstellungen zeichnen oder als Foto hochladen. Beim Abschließen
-  wird sie mit Datum in den Bericht gesetzt. Jedes PDF trägt eine Prüfsumme.
-- **PDF** mit einstellbarem Dateinamen, z. B. `{vorname}_{nachname}_Nr{nr3}` → `Max_Muster_Nr007.pdf`.
-- **Nachträglich bearbeiten:** nach dem Abschließen 90 Tage lang (einstellbar). Korrekturen werden im PDF vermerkt,
-  die vorherige Fassung bleibt gespeichert. Danach ist der Bericht gesperrt, bleibt aber herunterladbar.
+- **Original-Formular:** Ausgefüllt wird die Vorlage „Ausbildungsnachweis (Berichtsheft) – täglich“ der
+  Handelskammer Bremen (`lib/vorlage/`). Die Vorlage bleibt unverändert, Text und Unterschrift kommen darüber.
+- **Neuer Wochenbericht** mit einem Tipp: Woche und fortlaufende Nummer werden vorgeschlagen (Nummer änderbar),
+  Ausbildungsbereich auswählen (z. B. AW, BBS, Betrieb). Darunter die Liste der eigenen Berichte.
+- **Automatisch ausgefüllt:** Name, Ausbildungsjahr, Woche vom/bis, Stunden aus den Einstellungen,
+  Berufsschultage und Feiertage (Bremen voreingestellt). Bei „BBS“ wird die ganze Woche als Schule vorbelegt.
+- **Speichert von selbst** bei jeder Änderung. Man kann jeden Tag etwas eintragen und erst am Ende der Woche unterschreiben.
+- **Rechtschreibung und Grammatik:** LanguageTool auf dem eigenen Server. Vorschläge antippen, „So lassen“ oder
+  ins eigene Wörterbuch. Zu langer Text für ein Feld wird angezeigt.
+- **Unterschrift** einmal in den Einstellungen hinterlegen. Beim Unterschreiben Datum wählen (heute oder ein anderes),
+  die Unterschrift sitzt jedes Mal minimal anders, wie von Hand.
+- **PDF** mit festem Namen, Standard `Berichtsheft_{nachname}_NR{nr}` → `Berichtsheft_Witting_NR7.pdf`.
+  Am PC (Chrome/Edge) kann ein fester Speicherordner eingestellt werden, am Handy öffnet sich „In Dateien sichern“.
+- **Nachträglich bearbeiten:** 90 Tage nach dem Unterschreiben (einstellbar). Korrekturen werden klein im PDF vermerkt.
+- **Admin:** Konten anlegen, sperren, Passwort zurücksetzen, alle Berichte sehen, Fristen verlängern,
+  Bereiche, Dateiname, Feiertage und vorausgefüllte Texte einstellen.
 
 ## Aufbau
 - `server.js` – Server ohne Zusatzpakete (Node.js 20 oder neuer)
-- `lib/` – Kalender und Feiertage, PDF-Erzeugung, PNG-Leser
+- `lib/` – Kalender und Feiertage, Ausfüllen der Vorlage, PNG-Leser
+- `lib/vorlage/` – leere Vorlage der Handelskammer Bremen (Formularfelder entfernt)
 - `public/` – Oberfläche (für Handy und PC)
 - `deploy/` – Einrichtung, Updates und Sicherungen auf dem Server
 
