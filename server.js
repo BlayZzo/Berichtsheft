@@ -15,7 +15,7 @@ const { decodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.4.0';
+const VERSION = '3.5.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -218,7 +218,7 @@ function publicUser(u) {
     vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '', abteilung: u.abteilung || '', standort: u.standort || '',
     arbeitsart: u.arbeitsart || '', beruf: u.beruf || '', endJahr: u.endJahr || '', lehrjahr: u.lehrjahr || '',
     endeErreicht: endeErreicht(u), endeHinweisGesehen: !!u.endeHinweisGesehen,
-    genau: u.genau !== false, speicher: speicherInfo(u),
+    genau: u.genau !== false, theme: u.theme || 'auto', speicher: speicherInfo(u),
     bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
     hasSignature: !!u.sig, woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
     tutorialDone: !!u.tutorialDone, active: u.active
@@ -603,6 +603,7 @@ route('POST', '/api/me', 'user', (ctx) => {
   if ('endJahr' in b) { const y = Math.round(num(b.endJahr, 2000, 2100, 0)); if (!y) fail(400, 'Bitte das Jahr eintragen, in dem deine Ausbildung endet.'); u.endJahr = y; }
   if ('endeHinweisGesehen' in b) u.endeHinweisGesehen = !!b.endeHinweisGesehen;
   if ('genau' in b) u.genau = !!b.genau;
+  if ('theme' in b && ['auto', 'light', 'dark'].includes(b.theme)) u.theme = b.theme;
   if ('lehrjahr' in b) u.lehrjahr = Math.round(num(b.lehrjahr, 1, 4, 1));
   if ('bereich' in b) u.bereich = str(b.bereich, 40);
   if ('schultage' in b) u.schultage = (Array.isArray(b.schultage) ? b.schultage : []).map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).slice(0, 7);

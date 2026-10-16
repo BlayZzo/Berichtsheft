@@ -280,3 +280,5 @@ details li { margin: .25rem 0; }
 @media (max-width: 560px) { .lg { display: none; } .sm { display: inline; } table.hdr th { width: 22%; } }
 .switch .muted { font-weight: 400; }
 .wkend { margin-top: .6rem; color: #18202e; }
+textarea.invite { font: .9rem/1.45 system-ui, sans-serif; min-height: 14rem; background: var(--soft); }
+button.wa { background: #25d366; border-color: #25d366; color: #fff; }

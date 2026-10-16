@@ -102,7 +102,13 @@
     $('#themebtn').innerHTML = ICONS[t];
     $('#themebtn').title = t === 'dark' ? 'Dunkel (tippen für Automatisch)' : t === 'light' ? 'Hell (tippen für Dunkel)' : 'Automatisch (tippen für Hell)';
   }
-  $('#themebtn').onclick = () => { const t = themeNow(); setTheme(t === 'auto' ? 'light' : t === 'light' ? 'dark' : 'auto'); toast(themeNow() === 'auto' ? 'Hell/Dunkel wie am Gerät' : themeNow() === 'dark' ? 'Dunkler Modus' : 'Heller Modus'); };
+  $('#themebtn').onclick = () => {
+    const t = themeNow(), n = t === 'auto' ? 'light' : t === 'light' ? 'dark' : 'auto';
+    setTheme(n);
+    toast(n === 'auto' ? 'Hell/Dunkel wie am Gerät' : n === 'dark' ? 'Dunkler Modus' : 'Heller Modus');
+    /* Im Profil merken, damit es auf jedem Geraet gleich ist */
+    if (S.user) api('POST', '/api/me', { theme: n }).then((r) => { S.user = r.user; }).catch(() => {});
+  };
   setTheme(themeNow());
 
   /* ---------- Speicherort (PC: fester Ordner, Handy: Teilen) ---------- */
@@ -161,7 +167,7 @@
   });
 
   async function boot() {
-    try { S = { ...S, ...(await api('GET', '/api/state')) }; }
+    try { S = { ...S, ...(await api('GET', '/api/state')) }; if (S.user && S.user.theme && S.user.theme !== themeNow()) setTheme(S.user.theme); }
     catch { app.innerHTML = '<div class="card narrow"><div class="msg err">Der Server ist gerade nicht erreichbar. Bitte später neu laden.</div></div>'; return; }
     render();
   }
@@ -1089,15 +1095,37 @@
     if (tab === 'funktionen') adminLocks(data); else adminSettings(data.settings, data.bundeslaender);
   }
 
-  function zugangsText(name, pw) {
-    return `Dein Zugang zum Berichtsheft\nAdresse: ${location.origin}\nBenutzername: ${name}\nStartpasswort: ${pw}\n\nBeim ersten Anmelden legst du ein eigenes Passwort fest und trägst deine Angaben ein (Name, Firma, Standort, Lehrberuf, Ausbildungsende).`;
+  /* Fertiger Text zum Weitergeben, z. B. per WhatsApp */
+  function zugangsText(name, pw, neu) {
+    return [
+      'Hallo! 👋',
+      neu ? 'Hier ist dein neues Startpasswort für das digitale Berichtsheft:' : 'Hier ist dein Zugang zum digitalen Berichtsheft:',
+      '',
+      `🌐 ${location.origin}`,
+      `👤 Benutzername: ${name}`,
+      `🔑 Startpasswort: ${pw}`,
+      '',
+      '⚠️ Das ist nur dein Startpasswort. Beim ersten Anmelden musst du ein eigenes Passwort festlegen.',
+      '',
+      neu ? 'Danach geht alles weiter wie gewohnt.' : 'Danach trägst du einmal deine Angaben ein (Name, Firma, Lehrberuf …). Dann schreibst du dort deine Wochenberichte: Rechtschreibung wird geprüft, die Unterschrift eingesetzt, und du bekommst dein fertiges PDF.',
+      '',
+      'Privates Hilfsprogramm, nicht offiziell und ohne Verbindung zur IHK oder zu Ausbildungsbetrieben.'
+    ].join('\n');
   }
-  async function showPw(name, pw) {
-    const t = zugangsText(name, pw);
-    await modal(`<h2>Zugangsdaten</h2><p>Benutzername: <strong>${esc(name)}</strong></p><p>Startpasswort:</p><p><span class="pw">${esc(pw)}</span></p>
-      <p class="muted">Wird nur jetzt angezeigt. Beim ersten Anmelden muss die Person ein eigenes Passwort festlegen und ihre Angaben eintragen.</p>
-      <div class="actions"><button data-x="copy">Text zum Weitergeben kopieren</button><button class="primary" data-m="ok">Fertig</button></div>`,
-    (box) => { $('[data-x=copy]', box).onclick = () => copy(t); });
+  async function showPw(name, pw, neu) {
+    const t = zugangsText(name, pw, neu);
+    await modal(`<h2>${neu ? 'Neues Startpasswort' : 'Konto angelegt'}</h2>
+      <p>Benutzername: <strong>${esc(name)}</strong><br>Startpasswort: <span class="pw">${esc(pw)}</span></p>
+      <label>Text zum Weitergeben</label><textarea class="invite" rows="12" readonly>${esc(t)}</textarea>
+      <p class="muted small-t">Das Passwort wird nur jetzt angezeigt. Am besten gleich weiterschicken.</p>
+      <div class="actions"><button class="primary" data-x="copy">Text kopieren</button><button class="wa" data-x="wa">Per WhatsApp senden</button>
+      ${navigator.share ? '<button data-x="share">Teilen …</button>' : ''}<button data-m="ok">Fertig</button></div>`,
+    (box) => {
+      $('[data-x=copy]', box).onclick = () => copy(t);
+      $('[data-x=wa]', box).onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank', 'noopener');
+      const sh = $('[data-x=share]', box); if (sh) sh.onclick = () => navigator.share({ text: t }).catch(() => {});
+      $('textarea.invite', box).onfocus = (e) => e.target.select();
+    });
   }
 
   async function adminUsers() {
@@ -1182,7 +1210,7 @@
       }
       try {
         const r = await api('POST', '/api/admin/user', body);
-        if (r.password) await showPw(r.user.username, r.password);
+        if (r.password) await showPw(r.user.username, r.password, true);
         else toast('Gespeichert.');
         adminUsers();
       } catch (x) { toast(x.message); }
