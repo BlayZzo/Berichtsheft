@@ -15,7 +15,7 @@ const { decodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.6.0';
+const VERSION = '3.7.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -61,6 +61,7 @@ const DEFAULT_SETTINGS = {
   ltUrl: '',
   gesperrt: {},
   speicherMB: 20,
+  betreiber: { name: '', kontakt: '', serverOrt: 'Deutschland' },
   sperrText: 'Diese Funktion ist gerade wegen Wartung gesperrt. Bitte später noch einmal versuchen.',
   vorbelegung: {
     betrieb: '',
@@ -225,7 +226,7 @@ function publicUser(u) {
   };
 }
 /* Pflichtangaben: Azubis brauchen Name, Firma, Standort und Lehrjahr */
-const PFLICHT = ['vorname', 'nachname', 'firma', 'abteilung', 'standort', 'arbeitsart', 'beruf', 'lehrjahr', 'endJahr'];
+const PFLICHT = ['vorname', 'nachname', 'firma', 'abteilung', 'standort', 'arbeitsart', 'beruf', 'lehrjahr', 'endJahr', 'datenschutzAm'];
 const profileMissing = (u) => (u.role === 'admin' ? [] : PFLICHT.filter((k) => !u[k]));
 /* Ausbildung beendet, sobald das eingetragene Endjahr erreicht ist */
 const endeErreicht = (u) => !!u.endJahr && Number(heute().slice(0, 4)) >= Number(u.endJahr);
@@ -536,6 +537,8 @@ route('GET', '/api/health', null, (ctx) => (ctx.user || ['127.0.0.1', '::1', '::
 
 route('GET', '/api/state', null, (ctx) => ({
   setup: needsSetup(), user: publicUser(ctx.user), version: ctx.user ? VERSION : undefined, missing: ctx.user ? profileMissing(ctx.user) : [],
+  /* Fuer die Datenschutzerklaerung, die auch ohne Anmeldung lesbar sein muss */
+  datenschutz: { ...db.settings.betreiber, bearbeitbarTage: db.settings.bearbeitbarTage },
   settings: ctx.user ? {
     arbeitstage: db.settings.arbeitstage, typen: W.TYPEN, vorbelegung: db.settings.vorbelegung,
     bearbeitbarTage: db.settings.bearbeitbarTage, bereiche: db.settings.bereiche,
@@ -604,6 +607,7 @@ route('POST', '/api/me', 'user', (ctx) => {
   if ('endeHinweisGesehen' in b) u.endeHinweisGesehen = !!b.endeHinweisGesehen;
   if ('genau' in b) u.genau = !!b.genau;
   if ('theme' in b && ['auto', 'light', 'dark'].includes(b.theme)) u.theme = b.theme;
+  if (b.datenschutzOk === true || b.datenschutzOk === 'on') u.datenschutzAm = new Date().toISOString();
   if ('lehrjahr' in b) u.lehrjahr = Math.round(num(b.lehrjahr, 1, 4, 1));
   if ('bereich' in b) u.bereich = str(b.bereich, 40);
   if ('schultage' in b) u.schultage = (Array.isArray(b.schultage) ? b.schultage : []).map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).slice(0, 7);
@@ -912,6 +916,9 @@ route('POST', '/api/admin/settings', 'admin', (ctx) => {
   if ('ltUrl' in b) { const v = str(b.ltUrl, 200); if (v && !/^https?:\/\/[^\s]+$/.test(v)) fail(400, 'Adresse der Rechtschreibprüfung ungültig.'); s.ltUrl = v; }
   if (b.gesperrt && typeof b.gesperrt === 'object') s.gesperrt = Object.fromEntries(Object.keys(FUNKTIONEN).map((k) => [k, !!b.gesperrt[k]]));
   if ('speicherMB' in b) s.speicherMB = num(b.speicherMB, 1, 10000, 20);
+  if (b.betreiber && typeof b.betreiber === 'object') {
+    s.betreiber = { name: str(b.betreiber.name, 120), kontakt: str(b.betreiber.kontakt, 160), serverOrt: str(b.betreiber.serverOrt, 60) || 'Deutschland' };
+  }
   if ('sperrText' in b) s.sperrText = str(b.sperrText, 200) || DEFAULT_SETTINGS.sperrText;
   if (b.vorbelegung) for (const k of Object.keys(W.TYPEN)) if (k in b.vorbelegung) s.vorbelegung[k] = str(b.vorbelegung[k], 200);
   save();

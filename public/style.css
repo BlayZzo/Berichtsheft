@@ -284,3 +284,6 @@ textarea.invite { font: .9rem/1.45 system-ui, sans-serif; min-height: 14rem; bac
 button.wa { background: #25d366; border-color: #25d366; color: #fff; }
 /* Nicht angemeldet: nur die Anmeldemaske, keine weiteren Inhalte */
 body.guest .foot, body.guest #helpbtn, body.guest #nav { display: none !important; }
+.legal h2 { font-size: 1.02rem; }
+.legal p, .legal li { font-size: .95rem; }
+body.guest .legal { margin-top: .5rem; }

@@ -180,6 +180,7 @@
     const [, r, a, b] = location.hash.split('/');
     /* Geschlossener Bereich: ohne Anmeldung ist nur die Anmeldemaske sichtbar */
     document.body.classList.toggle('guest', !S.user);
+    if (r === 'datenschutz') return viewDatenschutz();
     if (S.setup) return viewSetup();
     if (!S.user) return viewLogin();
     if (r === 'hilfe') return viewHelp();
@@ -220,7 +221,8 @@
         <div id="err"></div>
         <div class="actions"><button class="primary">Anmelden</button></div>
       </form>
-      <p class="muted mt2">Passwort vergessen? Bitte bei der Person melden, die dich eingeladen hat.</p></div>`;
+      <p class="muted mt2">Passwort vergessen? Bitte bei der Person melden, die dich eingeladen hat.</p>
+      <p class="small-t"><a href="#/datenschutz">Datenschutz</a></p></div>`;
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       await busy($('button', e.target), async () => {
@@ -254,7 +256,9 @@
     const u = S.user;
     app.innerHTML = `<div class="card narrow"><p class="chip brand">Schritt 2 von 2</p><h2>Deine Angaben</h2>
       <p class="muted">Diese Angaben kommen automatisch in jeden Bericht. Du kannst sie später in den Einstellungen ändern.</p>
-      <form id="f">${profileFields(u)}<div id="err"></div><div class="actions"><button class="primary">Weiter</button></div></form></div>`;
+      <form id="f">${profileFields(u)}
+      <label class="inline mt2"><input type="checkbox" name="datenschutzOk" required ${u.datenschutzAm ? 'checked' : ''}> Ich habe die <a href="#/datenschutz" target="_blank" rel="noopener">Datenschutzerklärung</a> gelesen.</label>
+      <div id="err"></div><div class="actions"><button class="primary">Weiter</button></div></form></div>`;
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       try { const r = await api('POST', '/api/me', Object.fromEntries(new FormData(e.target))); S.user = r.user; S.missing = r.missing; location.hash = ''; render(); }
@@ -304,6 +308,52 @@
     if (!fromHelp && S.user && !S.user.tutorialDone) {
       try { S.user = (await api('POST', '/api/me', { tutorialDone: true })).user; } catch {}
     }
+  }
+
+  /* ---------- Datenschutzerklaerung ---------- */
+  function viewDatenschutz() {
+    const d = S.datenschutz || {};
+    const name = d.name || '[Name des Betreibers – vom Admin einzutragen]';
+    const kontakt = d.kontakt || '[E-Mail-Adresse – vom Admin einzutragen]';
+    const h = (t) => `<h2 class="mt2">${t}</h2>`;
+    app.innerHTML = `<div class="toprow"><a href="#/" class="back">‹ Zurück</a></div>
+      <div class="card legal"><h1>Datenschutzerklärung</h1>
+      <p class="muted">Stand: Oktober 2026</p>
+      ${!d.name ? '<div class="msg warn">Der Betreiber hat seinen Namen und Kontakt noch nicht eingetragen.</div>' : ''}
+      ${h('1. Wer ist verantwortlich?')}
+      <p>${esc(name)}<br>Kontakt: ${esc(kontakt)}</p>
+      <p>Dieses Berichtsheft ist ein privates, kostenloses Hilfsprogramm für einen geschlossenen Kreis eingeladener Personen. Es ist kein Angebot der Handelskammer Bremen (IHK) und steht in keiner Verbindung zu Ausbildungsbetrieben.</p>
+      ${h('2. Wozu werden Daten verarbeitet?')}
+      <p>Ausschließlich, um dir das Schreiben, Prüfen, Unterschreiben und Speichern deiner Ausbildungsnachweise zu ermöglichen. Es gibt keine Werbung, keine Weitergabe an Dritte zu eigenen Zwecken, kein Tracking und keine Auswertung deines Verhaltens.</p>
+      ${h('3. Welche Daten werden gespeichert?')}
+      <ul>
+        <li><strong>Konto:</strong> Benutzername und Passwort. Das Passwort wird nur verschlüsselt (als nicht umkehrbarer Hash) gespeichert.</li>
+        <li><strong>Deine Angaben:</strong> Vor- und Nachname, Firma, Abteilung, Standort (Stadt), feste oder mobile Arbeitsweise, Lehrberuf, Lehrjahr, Jahr des Ausbildungsendes, Stunden und Berufsschultage.</li>
+        <li><strong>Deine Berichte:</strong> Texte, Stunden, Ausbildungsbereich, Nummer, Datum der Unterschrift und frühere Fassungen, wenn du einen Bericht nachträglich änderst.</li>
+        <li><strong>Unterschrift:</strong> das Bild deiner Unterschrift, das du hochlädst oder zeichnest.</li>
+        <li><strong>Hilfen:</strong> Arbeitsorte (z. B. Adresse und Name von Ausbilder oder Geselle), Textbausteine und dein Wörterbuch. Bitte trage bei Dritten nur ein, was für den Bericht nötig ist.</li>
+        <li><strong>Technisch:</strong> Zeitpunkt der Kontoerstellung, der letzten Anmeldung und der letzten Aktivität sowie die belegte Speichermenge.</li>
+      </ul>
+      ${h('4. Cookies und Speicher im Browser')}
+      <p>Es wird nur ein technisch notwendiges Sitzungs-Cookie gesetzt, damit du angemeldet bleibst. Es läuft nach spätestens 14 Tagen oder 12 Stunden ohne Nutzung ab. Im Browser selbst werden nur deine Hell-/Dunkel-Einstellung und, falls du ihn wählst, dein Speicherordner für PDFs gemerkt. Diese Angaben bleiben auf deinem Gerät.</p>
+      ${h('5. Schutz vor Missbrauch')}
+      <p>Bei Anmeldeversuchen wird deine IP-Adresse kurzzeitig nur im Arbeitsspeicher gehalten, um das Erraten von Passwörtern zu verhindern. Sie wird nach spätestens 15 Minuten verworfen und nicht dauerhaft gespeichert.</p>
+      ${h('6. Wo liegen die Daten?')}
+      <p>Auf einem gemieteten Server der Hetzner Online GmbH (Industriestr. 25, 91710 Gunzenhausen) in ${esc(d.serverOrt || 'Deutschland')}. Hetzner verarbeitet die Daten nur als technischer Dienstleister (Auftragsverarbeitung) und nicht für eigene Zwecke. Die Verbindung ist per https verschlüsselt.</p>
+      <p>Die Rechtschreib- und Grammatikprüfung läuft auf demselben Server. Deine Texte werden dafür <strong>nicht</strong> an andere Anbieter geschickt. Es werden keine Schriften, Skripte oder Inhalte von fremden Servern geladen.</p>
+      ${h('7. Wer kann die Daten sehen?')}
+      <p>Deine Berichte siehst nur du. Der Admin-Bereich zeigt nur Kontodaten (Name, Firma, Abteilung, Standort, Lehrberuf, Ausbildungsende, Aktivität und belegten Speicher), keine Berichte. Als Betreiber des Servers hat der Verantwortliche technisch Zugriff auf alle gespeicherten Daten. Er nutzt diesen Zugriff nur für Wartung, Fehlerbehebung und Sicherungen.</p>
+      ${h('8. Wie lange werden Daten gespeichert?')}
+      <p>So lange dein Konto besteht. Nach dem Ende deiner Ausbildung kann dein Konto mit allen Berichten gelöscht werden. Du bekommst vorher einen Hinweis, um alles als PDF zu sichern. Zur Ausfallsicherheit gibt es Sicherungskopien des Servers: tägliche werden nach 14 Tagen gelöscht, monatliche nach spätestens 4 Jahren. Ausbildungsnachweise werden oft noch nach der Prüfung gebraucht.</p>
+      ${h('9. Rechtsgrundlage')}
+      <p>Die Verarbeitung ist nötig, damit du das Berichtsheft nutzen kannst (Art. 6 Abs. 1 lit. b DSGVO). Der Schutz vor Missbrauch und die Sicherungskopien beruhen auf dem berechtigten Interesse an einem sicheren Betrieb (Art. 6 Abs. 1 lit. f DSGVO). Die Nutzung ist freiwillig.</p>
+      ${h('10. Deine Rechte')}
+      <ul>
+        <li><strong>Auskunft und Kopie</strong> (Art. 15 und 20 DSGVO): Deine Angaben siehst du unter Einstellungen, alle Berichte bekommst du dort über „Alle Berichte sichern“ als ZIP-Datei.</li>
+        <li><strong>Berichtigung</strong> (Art. 16): Angaben und Berichte kannst du selbst ändern.</li>
+        <li><strong>Löschung, Einschränkung, Widerspruch</strong> (Art. 17, 18, 21): bitte formlos an die oben genannte Kontaktadresse.</li>
+        <li><strong>Beschwerde</strong> (Art. 77) bei einer Datenschutz-Aufsichtsbehörde, z. B. der Landesbeauftragten für Datenschutz und Informationsfreiheit der Freien Hansestadt Bremen.</li>
+      </ul></div>`;
   }
 
   /* ---------- Hilfe ---------- */
@@ -947,7 +997,7 @@
         <form id="df" class="row"><input type="text" name="w" placeholder="Wort hinzufügen" class="grow"><button>Hinzufügen</button></form></div>
 
       <div class="card">${pwForm('Passwort ändern')}</div>
-      <div class="card"><h2>Hilfe</h2><div class="actions nomargin"><button id="tour2">Einführung ansehen</button><a class="btn" href="#/hilfe">Anleitung öffnen</a></div></div>
+      <div class="card"><h2>Hilfe</h2><div class="actions nomargin"><button id="tour2">Einführung ansehen</button><a class="btn" href="#/hilfe">Anleitung öffnen</a><a class="btn" href="#/datenschutz">Datenschutz</a></div></div>
       <p class="muted center">Angemeldet als <strong>${esc(u.username)}</strong></p>`;
 
     $('#pf').onsubmit = async (e) => {
@@ -1155,6 +1205,7 @@
       <div id="nerr"></div>
       <p class="muted small-t">Tipp: Lege dir für deine eigenen Berichte ein normales Azubi-Konto an. Der Admin-Zugang ist nur zum Verwalten.</p></div>
       ${beendet ? `<div class="msg warn">${beendet} Konto${beendet > 1 ? 'en' : ''} mit beendeter Ausbildung (Endjahr erreicht). Diese stehen oben und können gelöscht werden.</div>` : ''}
+      ${S.datenschutz && S.datenschutz.name ? '' : '<div class="msg warn">Bitte unter <a href="#/admin/einstellungen">Einstellungen</a> deinen Namen und eine Kontakt-E-Mail für die Datenschutzerklärung eintragen.</div>'}
       <h2>Azubis (${azubis.length})</h2><div class="list">${azubis.map(card).join('') || '<div class="card muted">Noch keine Konten.</div>'}</div>
       <h2 class="mt2">Admins (${admins.length})</h2><div class="list">${admins.map(card).join('')}</div>
       <p class="muted small-t mt2">Aus Datenschutzgründen siehst du hier keine Berichte, nur die Kontodaten und wie viel Speicher belegt ist.</p>`;
@@ -1240,6 +1291,13 @@
     const T = S.settings.typen, vb = s.vorbelegung;
     $('#adm').innerHTML = `<div class="card"><h2>Vorlage</h2><p class="muted">Ausgefüllt wird das Formular „Ausbildungsnachweis (Berichtsheft) – täglich“ der Handelskammer Bremen.</p>
       <div class="actions"><a class="btn" href="/api/blank" target="_blank" rel="noopener">Leere Vorlage ansehen</a></div></div>
+      <div class="card"><form id="bf2"><h2>Angaben für die Datenschutzerklärung</h2>
+      <p class="muted">Pflicht, sobald andere Personen ihre Daten eintragen. Wird in der <a href="#/datenschutz" target="_blank" rel="noopener">Datenschutzerklärung</a> als Verantwortlicher angezeigt.</p>
+      <label>Dein Name</label><input type="text" name="name" value="${esc((s.betreiber || {}).name)}" placeholder="Vorname Nachname">
+      <label>Kontakt (E-Mail)</label><input type="text" name="kontakt" value="${esc((s.betreiber || {}).kontakt)}" placeholder="z. B. berichtsheft@deine-mail.de">
+      <label>Serverstandort</label><input type="text" name="serverOrt" value="${esc((s.betreiber || {}).serverOrt || 'Deutschland')}">
+      <div class="hint">Steht in der Hetzner-Konsole beim Server (z. B. Nürnberg oder Falkenstein = Deutschland, Helsinki = Finnland).</div>
+      <div id="berr"></div><div class="actions"><button class="primary">Speichern</button></div></form></div>
       <div class="card"><h2>Rechtschreibprüfung testen</h2><p class="muted">Prüft, ob der Dienst auf dem Server antwortet.</p>
       <div class="actions nomargin"><button id="lttest">Jetzt testen</button></div><div id="ltres"></div></div>
       <div class="card"><form id="gf"><h2>Einstellungen für alle</h2>
@@ -1263,6 +1321,14 @@
       $('#fnex').textContent = $('#fn').value.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m).replace(/\s+/g, '_') + '.pdf';
     };
     $('#fn').oninput = ex; ex();
+    $('#bf2').onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api('POST', '/api/admin/settings', { settings: { betreiber: Object.fromEntries(new FormData(e.target)) } });
+        S.datenschutz = { ...(S.datenschutz || {}), ...r.settings.betreiber };
+        errBox($('#berr'), 'Gespeichert.', 'ok');
+      } catch (x) { errBox($('#berr'), x.message); }
+    };
     $('#lttest').onclick = async (e) => {
       await busy(e.target, async () => {
         errBox($('#ltres'), 'Teste …', 'info');
