@@ -42,7 +42,7 @@ const DEFAULT_SETTINGS = {
   betrieb: '',
   ausbilder: '',
   beruf: '',
-  bundesland: 'NW',
+  bundesland: 'HB',
   arbeitstage: [0, 1, 2, 3, 4],
   dateiname: '{vorname}_{nachname}_Nr{nr3}',
   bearbeitbarTage: 90,

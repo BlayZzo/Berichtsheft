@@ -2,7 +2,7 @@
 
 Digitaler Ausbildungsnachweis (wöchentlich) mit automatischem Vorausfüllen,
 Rechtschreib- und Grammatikprüfung, digitaler Unterschrift und PDF-Export.
-Eigenständiges Programm mit eigener Adresse.
+Eigenständiges Programm unter https://bh-bremen.de
 
 ## Was es kann
 - **Admin** legt Konten an (vorläufiges Passwort, beim ersten Anmelden muss ein eigenes gewählt werden),
@@ -30,7 +30,7 @@ Eigenständiges Programm mit eigener Adresse.
 `node server.js`, dann http://localhost:8090. Der Einrichtungs-Code steht im Konsolenfenster.
 
 ## Server einrichten
-`DOMAIN=berichte.deine-domain.de bash /opt/berichtsheft/deploy/setup.sh`
+`bash /opt/berichtsheft/deploy/setup.sh` (Adresse bh-bremen.de, Feiertage für Bremen voreingestellt)
 
 ## Server
 - Daten: `/var/lib/berichtsheft/data` (nie im Repository)

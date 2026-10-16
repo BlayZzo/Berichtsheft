@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Berichtsheft - Einrichtung auf einem Ubuntu-Server.
-# Aufruf als root:  DOMAIN=berichte.deine-domain.de bash /opt/berichtsheft/deploy/setup.sh
+# Aufruf als root:  bash /opt/berichtsheft/deploy/setup.sh
+# Andere Adresse:   DOMAIN=andere-domain.de bash /opt/berichtsheft/deploy/setup.sh
 # Kann gefahrlos noch einmal ausgefuehrt werden. Andere Programme auf dem Server werden nicht angefasst.
 set -euo pipefail
 
-DOMAIN="${DOMAIN:-}"
+DOMAIN="${DOMAIN:-bh-bremen.de}"
 REPO_DIR=/opt/berichtsheft
 BASE_DIR=/var/lib/berichtsheft
 DATA_DIR=$BASE_DIR/data
@@ -128,6 +129,10 @@ $DOMAIN {
 	header X-Robots-Tag "noindex, nofollow"
 	reverse_proxy 127.0.0.1:$PORT
 }
+
+www.$DOMAIN {
+	redir https://$DOMAIN{uri} permanent
+}
 EOF
 grep -qxF "import $CADDY_SITE" /etc/caddy/Caddyfile || printf '\nimport %s\n' "$CADDY_SITE" >> /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
@@ -181,7 +186,7 @@ sleep 3
 if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null; then
   say "Fertig! Das Berichtsheft laeuft."
   echo "Adresse: https://$DOMAIN"
-  echo "Wichtig: Beim Domain-Anbieter muss ein A-Eintrag fuer '${DOMAIN%%.*}' auf die IP dieses Servers zeigen:"
+  echo "Wichtig: Beim Domain-Anbieter muessen die A-Eintraege fuer $DOMAIN und www.$DOMAIN auf die IP dieses Servers zeigen:"
   curl -fsS -4 https://ifconfig.me 2>/dev/null && echo
   if [ -f "$BASE_DIR/secret/setup-code.txt" ]; then
     echo
