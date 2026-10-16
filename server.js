@@ -15,7 +15,7 @@ const { decodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.2.0';
+const VERSION = '3.3.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -330,20 +330,24 @@ function rowsOf(r) {
 const NO_HOURS = new Set(['urlaub', 'krank', 'feiertag', 'frei']);
 function fitsOf(r) { return rowsOf(r).map((d, i) => (d ? fitDay(d.text, i) : null)); }
 
-function buildPdf(r, { blank = false } = {}) {
+function buildPdf(r, { blank = false, preview = null } = {}) {
   const done = r.status === 'abgeschlossen';
   const k = nameOf(r);
-  const rows = rowsOf(r).map((d) => d && ({ text: d.text, hours: NO_HOURS.has(d.type) && !Number(d.hours) ? null : d.hours }));
+  /* Leere Tage (z. B. ein ungenutzter Sonntag) bleiben im Formular ganz leer, auch ohne Stunden */
+  const rows = rowsOf(r).map((d) => d && ({ text: d.text, hours: !d.text.trim() || (NO_HOURS.has(d.type) && !Number(d.hours)) ? null : d.hours }));
   let footer = '';
   if (done) {
     footer = `Digital unterschrieben am ${W.de(r.signedAt.slice(0, 10))}`;
     if (r.korrigiertAm) footer += ` (korrigiert, erstmals ${W.de(r.firstSignedAt.slice(0, 10))})`;
     footer += `  ·  Nr. ${r.nr}  ·  Prüfsumme ${r.hash.slice(0, 16)}`;
-  } else if (!blank) footer = 'ENTWURF – noch nicht unterschrieben';
+  } else if (preview) footer = 'VORSCHAU – so sieht der Bericht nach dem Unterschreiben aus';
+  else if (!blank) footer = 'ENTWURF – noch nicht unterschrieben';
   const pdf = fill(blank ? { days: [] } : {
     name: `${k.vorname} ${k.nachname}`.trim(), ajahr: r.ausbildungsjahr ? String(r.ausbildungsjahr) : '', bereich: r.bereich,
     von: deKurz(r.weekStart), bis: deKurz(lastDay(r)), days: rows,
-    sigDate: done ? W.de(r.sigDate) : '', signature: done ? loadSignature(r.sig) : null, seed: r.id + r.signedAt, footer
+    sigDate: done ? W.de(r.sigDate) : preview ? W.de(preview.date) : '',
+    signature: done ? loadSignature(r.sig) : preview ? loadSignature(preview.sig) : null,
+    seed: r.id + (r.signedAt || preview && preview.date), footer
   });
   return { pdf, name: fileName(r) };
 }
@@ -377,6 +381,7 @@ function artOf(m) {
   return 'gr';
 }
 
+let lastLtError = '';
 async function spellcheck(user, input) {
   const base = (db.settings.ltUrl || LT_DEFAULT).replace(/\/+$/, '');
   const body = new URLSearchParams({ text: input, language: 'de-DE' });
@@ -388,7 +393,8 @@ async function spellcheck(user, input) {
     const res = await fetch(base + '/v2/check', { method: 'POST', body, signal: ctrl.signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     data = await res.json();
-  } catch {
+  } catch (e) {
+    lastLtError = `${new Date().toISOString()} ${base}: ${e.name === 'AbortError' ? 'keine Antwort nach 20 s' : e.message}${e.cause ? ' (' + (e.cause.code || e.cause.message) + ')' : ''}`;
     return { error: 'Die Rechtschreibprüfung ist gerade nicht erreichbar.', matches: [] };
   } finally { clearTimeout(timer); }
   const dict = new Set((user.woerterbuch || []).map((w) => w.toLowerCase()));
@@ -678,7 +684,7 @@ route('POST', '/api/report/finish', 'azubi', (ctx) => {
   const date = str(ctx.body.date, 10) || heute();
   if (!W.isDate(date)) fail(400, 'Bitte ein gültiges Datum für die Unterschrift wählen.');
   if (date > heute()) fail(400, 'Das Datum der Unterschrift darf nicht in der Zukunft liegen.');
-  const empty = r.days.filter((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim());
+  const empty = r.days.filter((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim() && W.weekday(d.date) < 5);
   if (empty.length) fail(400, `Bitte noch ausfüllen: ${empty.map((d) => W.KURZ[W.weekday(d.date)] + ' ' + W.deShort(d.date)).join(', ')}`);
   const long = fitsOf(r).map((f, i) => (f && !f.fits ? W.KURZ[i] : null)).filter(Boolean);
   if (long.length) fail(400, `Zu viel Text für das Feld: ${long.join(', ')}. Bitte etwas kürzen.`);
@@ -719,7 +725,13 @@ route('POST', '/api/report/delete', 'azubi', (ctx) => {
 route('GET', '/api/pdf', 'azubi', (ctx) => {
   gesperrt('pdf');
   const r = findReport(ctx, ctx.query.get('id'));
-  const { pdf, name } = buildPdf(r);
+  /* Vorschau eines Entwurfs mit Unterschrift und gewaehltem Datum, damit man sieht, wie es aussehen wird */
+  let preview = null;
+  if (r.status !== 'abgeschlossen' && ctx.query.get('preview') === '1') {
+    const d = str(ctx.query.get('date'), 10);
+    preview = { date: W.isDate(d) ? d : heute(), sig: ctx.user.sig };
+  }
+  const { pdf, name } = buildPdf(r, { preview });
   const disp = ctx.query.get('view') === '1' ? 'inline' : 'attachment';
   return { raw: pdf, type: 'application/pdf', headers: { 'Content-Disposition': `${disp}; filename="${asciiName(name)}"; filename*=UTF-8''${encodeURIComponent(name)}` } };
 });
@@ -817,6 +829,13 @@ route('POST', '/api/admin/delete', 'admin', (ctx) => {
   for (const s of sigs) if (s && !used.has(s)) { try { fs.unlinkSync(path.join(SIG_DIR, s + '.png')); } catch {} sigSizes.delete(s); }
   saveNow();
   return { ok: true };
+});
+
+/* Rechtschreibpruefung testen (fuer die Fehlersuche im Admin-Bereich) */
+route('GET', '/api/admin/ltcheck', 'admin', async (ctx) => {
+  const t0 = Date.now();
+  const r = await spellcheck({}, 'Das ist ein Tset mit einem Feler.');
+  return { ok: !r.error, ms: Date.now() - t0, treffer: (r.matches || []).length, fehler: r.error ? lastLtError : '', adresse: (db.settings.ltUrl || LT_DEFAULT) };
 });
 
 route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER, funktionen: FUNKTIONEN }));

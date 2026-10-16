@@ -456,7 +456,8 @@
         <tr><th><span class="lg">Ausbildungswoche vom</span><span class="sm">Woche vom</span></th><td>${de(r.weekStart)}</td><th>bis</th><td>${de(r.bis)}</td></tr>
       </tbody></table>
       <div class="days"><div class="dhead"><span></span><span>Betriebliche Tätigkeiten, Unterweisungen, Unterricht, Themen der Berufsschule</span><span>Std.</span></div>
-      ${r.days.map((d, i) => dayRow(d, i, ed)).join('')}</div>`;
+      ${r.days.map((d, i) => dayRow(d, i, ed)).join('')}</div>
+      ${ed ? `<label class="inline wkend"><input type="checkbox" data-f="wochenende" ${r.days.some((d) => wd(d.date) >= 5) ? 'checked' : ''}> Samstag und Sonntag auch eintragen <span class="muted">(z. B. bei Wochenendarbeit)</span></label>` : ''}`;
     if (ed) {
       html += `<div class="sigrow"><div><label for="sigdate">Datum</label><input type="date" id="sigdate" value="${today()}" max="${today()}"></div>
         <div class="sigprev">${u.hasSignature ? `<img src="/api/me/signature?t=${Date.now()}" alt="Unterschrift">` : '<a href="#/einstellungen">Unterschrift hinterlegen</a>'}</div>
@@ -466,7 +467,7 @@
     if (ed) {
       html += `<div class="card actionsbar"><span class="savestate" id="savestate">✓ Gespeichert</span><span class="spacer"></span>
         ${r.firstSignedAt ? '' : '<button class="small danger" data-act="delete">Löschen</button>'}
-        <a class="btn" href="/api/pdf?id=${esc(r.id)}&view=1" target="_blank" rel="noopener">Vorschau</a>
+        <button type="button" data-act="preview">Vorschau mit Unterschrift</button>
         <button class="primary" data-act="finish" ${locked('unterschreiben') ? 'disabled' : ''}>Prüfen & unterschreiben</button><div id="finerr" class="full">${lockNote('unterschreiben')}</div></div>`;
     }
     app.innerHTML = html;
@@ -604,6 +605,11 @@
       const act = b.dataset.act, i = Number(b.dataset.i);
       if (act === 'save') return busy(b, () => savePdf(R.rep));
       if (act === 'reopen') return reopen();
+      if (act === 'preview') {
+        const d = ($('#sigdate') || {}).value || today();
+        await flushSave();
+        return window.open(`/api/pdf?id=${encodeURIComponent(R.rep.id)}&view=1&preview=1&date=${d}`, '_blank', 'noopener');
+      }
       if (act === 'delete') return del();
       if (act === 'finish') return finish(b);
       if (act === 'fix') return applyFix(i, Number(b.dataset.m), b.dataset.v);
@@ -636,6 +642,7 @@
     app.onchange = (e) => {
       const el = e.target;
       if (el.dataset.f === 'bereich') { R.rep.bereich = el.value; markDirty(true); return; }
+      if (el.dataset.f === 'wochenende') { wochenende(el.checked, el); return; }
       if (el.dataset.f === 'ausbildungsjahr') { R.rep.ausbildungsjahr = Number(el.value); markDirty(true); return; }
       if (el.dataset.k !== 'type') return;
       const i = Number(el.dataset.i), day = R.rep.days[i], old = day.type, hol = R.rep.holidays[i];
@@ -653,6 +660,33 @@
     };
   }
 
+  /* Samstag/Sonntag nur bei Bedarf: per Haken unten ein- oder ausblenden */
+  async function wochenende(on, box) {
+    const r = R.rep;
+    if (on) {
+      for (const k of [5, 6]) {
+        const date = addDays(r.weekStart, k);
+        if (!r.days.some((d) => d.date === date)) { r.days.push({ date, type: 'betrieb', hours: Number(S.user.stunden) || 7.6, text: '' }); r.holidays.push(''); }
+      }
+    } else {
+      const we = r.days.filter((d) => wd(d.date) >= 5);
+      if (we.some((d) => d.text.trim())) {
+        const ok = await modal('<h2>Wochenende entfernen?</h2><p>Bei Samstag oder Sonntag steht schon Text. Der wird gelöscht.</p><div class="actions"><button class="danger" data-m="y">Entfernen</button><button data-m="n">Abbrechen</button></div>');
+        if (ok !== 'y') { box.checked = true; return; }
+      }
+      const keep = r.days.map((d, i) => wd(d.date) < 5 ? i : -1).filter((i) => i >= 0);
+      r.holidays = keep.map((i) => r.holidays[i] || '');
+      r.days = keep.map((i) => r.days[i]);
+    }
+    const order = r.days.map((d, i) => [d, r.holidays[i] || '']).sort((a, b) => a[0].date.localeCompare(b[0].date));
+    r.days = order.map((x) => x[0]); r.holidays = order.map((x) => x[1]);
+    R.checks = {}; R.undo = {}; R.panel = {};
+    drawReport();
+    r.days.forEach((d, i) => { if (d.text.trim()) runCheck(i); });
+    markDirty(true);
+    if (on) { const el = $('#day-' + (r.days.length - 2)); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  }
+
   function markDirty(now) {
     R.dirty = true;
     const s = $('#savestate'); if (s) s.textContent = 'Wird gespeichert …';
@@ -667,7 +701,7 @@
     const rep = R.rep;
     R.saving = api('POST', '/api/report/save', { id: rep.id, nr: rep.nr, bereich: rep.bereich, ausbildungsjahr: rep.ausbildungsjahr, days: rep.days }).then((res) => {
       if (R.rep !== rep) return;
-      rep.fits = res.report.fits; rep.file = res.report.file;
+      rep.fits = res.report.fits; rep.file = res.report.file; rep.holidays = res.report.holidays;
       rep.days.forEach((d, i) => { const f = rep.fits[wd(d.date)], el = $('#fit-' + i); if (el) el.innerHTML = f && !f.fits ? fitMsg(f) : ''; });
       const s = $('#savestate'); if (s && !R.dirty) s.textContent = '✓ Gespeichert';
     }).catch((x) => {
@@ -808,7 +842,7 @@
       R.dirty = true; await save();
       if (R.dirty) return errBox(errEl, 'Speichern hat nicht geklappt. Bitte noch einmal versuchen.');
       if (!S.user.hasSignature) return errBox(errEl, 'Bitte zuerst in den Einstellungen deine Unterschrift hinterlegen.');
-      const empty = R.rep.days.findIndex((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim());
+      const empty = R.rep.days.findIndex((d) => (d.type === 'betrieb' || d.type === 'schule') && !d.text.trim() && wd(d.date) < 5);
       if (empty >= 0) { $('#day-' + empty).scrollIntoView({ behavior: 'smooth', block: 'center' }); return errBox(errEl, `${TAGE[wd(R.rep.days[empty].date)]} ist noch leer.`); }
       const long = R.rep.days.findIndex((d) => { const f = R.rep.fits[wd(d.date)]; return f && !f.fits; });
       if (long >= 0) { $('#day-' + long).scrollIntoView({ behavior: 'smooth', block: 'center' }); return errBox(errEl, `${TAGE[wd(R.rep.days[long].date)]}: zu viel Text für das Feld. Bitte etwas kürzen.`); }
@@ -1177,6 +1211,8 @@
     const T = S.settings.typen, vb = s.vorbelegung;
     $('#adm').innerHTML = `<div class="card"><h2>Vorlage</h2><p class="muted">Ausgefüllt wird das Formular „Ausbildungsnachweis (Berichtsheft) – täglich“ der Handelskammer Bremen.</p>
       <div class="actions"><a class="btn" href="/api/blank" target="_blank" rel="noopener">Leere Vorlage ansehen</a></div></div>
+      <div class="card"><h2>Rechtschreibprüfung testen</h2><p class="muted">Prüft, ob der Dienst auf dem Server antwortet.</p>
+      <div class="actions nomargin"><button id="lttest">Jetzt testen</button></div><div id="ltres"></div></div>
       <div class="card"><form id="gf"><h2>Einstellungen für alle</h2>
       <label>Ausbildungsbereiche (einer pro Zeile)</label><textarea name="bereiche" rows="4">${esc(s.bereiche.join('\n'))}</textarea>
       <div class="hint">Jeder kann zusätzlich eigene Bereiche über seine Arbeitsorte anlegen.</div>
@@ -1198,6 +1234,15 @@
       $('#fnex').textContent = $('#fn').value.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m).replace(/\s+/g, '_') + '.pdf';
     };
     $('#fn').oninput = ex; ex();
+    $('#lttest').onclick = async (e) => {
+      await busy(e.target, async () => {
+        errBox($('#ltres'), 'Teste …', 'info');
+        try {
+          const r = await api('GET', '/api/admin/ltcheck');
+          errBox($('#ltres'), r.ok ? `Funktioniert (${r.treffer} Fehler im Testsatz gefunden, ${r.ms} ms).` : `Nicht erreichbar: ${r.fehler || 'unbekannt'} (Adresse ${r.adresse})`, r.ok ? 'ok' : 'err');
+        } catch (x) { errBox($('#ltres'), x.message); }
+      });
+    };
     $('#gf').onsubmit = async (e) => {
       e.preventDefault();
       const f = e.target, fd = new FormData(f);

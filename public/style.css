@@ -279,3 +279,4 @@ details li { margin: .25rem 0; }
 .sm { display: none; }
 @media (max-width: 560px) { .lg { display: none; } .sm { display: inline; } table.hdr th { width: 22%; } }
 .switch .muted { font-weight: 400; }
+.wkend { margin-top: .6rem; color: #18202e; }
