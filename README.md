@@ -11,7 +11,7 @@ Eigenständiges Programm unter https://bh-bremen.de
   Handelskammer Bremen (`lib/vorlage/`). Die Vorlage bleibt unverändert, Text und Unterschrift kommen darüber.
 - **Neuer Wochenbericht:** „Diese Woche“, „Nächste Woche“ oder ein beliebiges Datum, die Woche geht immer von
   Montag bis Sonntag. Fortlaufende Nummer (änderbar), Ausbildungsbereich wählen. Darunter die eigenen Berichte.
-- **Einstellungen:** Name, Firma, Standort, Lehrjahr (Pflicht), Stunden, Berufsschultage, **Arbeitsorte**
+- **Einstellungen:** Vorname, Nachname, Firma, Lehrberuf, Lehrjahr (Pflicht), Stunden, Berufsschultage, **Arbeitsorte**
   (Überschrift, Adresse, Bereich-Kürzel, Ausbilder/Geselle) und **Textbausteine**.
 - **Beim Schreiben:** ＋ Einfügen (Arbeitsorte/Bausteine an der Cursor-Stelle), ★ Markiertes merken,
   💡 Ideen (aus den eigenen früheren Berichten und der Woche, einfügen oder kopieren), ↶ Rückgängig.
@@ -19,21 +19,21 @@ Eigenständiges Programm unter https://bh-bremen.de
 - **Rechtschreibung und Grammatik** mit LanguageTool auf dem eigenen Server, direkt im Text farbig unterstrichen
   (Rechtschreibung rot, Grammatik blau, Zeichensetzung orange, Stil lila). Wort antippen → Vorschlag übernehmen,
   „Alle Rechtschreibfehler korrigieren“, Wörterbuch, genaue Prüfung (Stil, Füllwörter) zuschaltbar.
-- **Unterschrift** mit wählbarem Datum, jedes Mal minimal anders gesetzt. PDF `Berichtsheft_Nachname_NRx.pdf`,
+- **Unterschrift** immer in Schwarz: auf dem Bildschirm zeichnen oder als Foto/Scan (auf weißem Papier)
+  hochladen, der Hintergrund wird automatisch entfernt. Wählbares Datum, jedes Mal minimal anders gesetzt. PDF `Berichtsheft_Nachname_NRx.pdf`,
   am PC fester Speicherordner, am Handy „In Dateien sichern“. 90 Tage nachträglich bearbeitbar.
 - **Konten:** eigener reiner Admin-Zugang plus normale Konten. Admin gibt nur einen Benutzernamen ein und bekommt
-  ein kurzes Startpasswort. Beim ersten Anmelden: eigenes Passwort, dann Name, Firma,
-  Lehrberuf, Lehrjahr und Ausbildungsende (Jahr). Ein neues Passwort bei Verlust kann nur der Admin erstellen.
+  ein kurzes Startpasswort und einen fertigen Text zum Weiterschicken (z. B. WhatsApp). Beim ersten Anmelden:
+  eigenes Passwort, dann Vorname, Nachname, Firma, Lehrberuf, Lehrjahr und Zustimmung zum Datenschutz. Ein neues Passwort bei Verlust kann nur der Admin erstellen.
 - **Speicherplatz pro Konto:** Standard 20 MB (Admin → Einstellungen), pro Person änderbar. Der Admin sieht nur,
   wie viel belegt ist, nicht was.
-- **Admin sieht keine Berichte**, nur Name, Firma, Lehrberuf, Ausbildungsende, dabei seit,
-  zuletzt aktiv, Speicher. Konten mit erreichtem Endjahr werden oben markiert und können gelöscht werden.
-- **Ende der Ausbildung:** Einmaliger Hinweis an die Person, dass das Konto gelöscht werden kann, mit
-  „Alle Berichte sichern“ (alle PDFs als ZIP, auch jederzeit in den Einstellungen). Bearbeiten, sperren,
+- **Admin sieht keine Berichte**, nur Name, Firma, Lehrberuf, dabei seit, zuletzt aktiv, Speicher.
+  „Alle Berichte sichern“ (alle PDFs als ZIP) jederzeit in den Einstellungen. Konten bearbeiten, sperren, löschen,
   neues Startpasswort (mit Bestätigung durch Eintippen des Benutzernamens), Bearbeitungsfrist verlängern.
 - **Funktionen sperren:** Anmelden, neue Berichte, Schreiben, Rechtschreibprüfung, Ideen, Unterschreiben, PDF
   einzeln vorübergehend abschalten, mit eigenem Hinweistext.
-- **Hell/Dunkel**, kurze überspringbare Einführung beim ersten Start, Anleitung über „?“.
+- **Geschlossener Bereich:** Inhalte erst nach Anmeldung, mit Datenschutzerklärung.
+- **Hell/Dunkel** (im Profil gespeichert), kurze überspringbare Einführung beim ersten Start, Anleitung über „?“.
 
 ## Aufbau
 - `server.js` – Server ohne Zusatzpakete (Node.js 20 oder neuer)

@@ -270,8 +270,7 @@
       <div><label>Nachname <span class="req">*</span></label><input type="text" name="nachname" value="${esc(u.nachname)}" required></div></div>
       <label>Firma <span class="req">*</span></label><input type="text" name="firma" value="${esc(u.firma)}" required placeholder="Name deines Ausbildungsbetriebs">
       <label>Lehrberuf <span class="req">*</span></label><input type="text" name="beruf" value="${esc(u.beruf)}" required placeholder="z. B. Elektroniker/in für Betriebstechnik">
-      <div class="grid"><div><label>Lehrjahr <span class="req">*</span></label><select name="lehrjahr" required>${['', 1, 2, 3, 4].map((n) => `<option value="${n}" ${String(n) === String(u.lehrjahr) ? 'selected' : ''}>${n ? n + '. Lehrjahr' : 'Bitte wählen'}</option>`).join('')}</select></div>
-      <div><label>Ausbildung endet im Jahr <span class="req">*</span></label><input type="number" name="endJahr" min="2020" max="2040" value="${esc(u.endJahr)}" required placeholder="z. B. 2029" inputmode="numeric"></div></div>`;
+      <label>Lehrjahr <span class="req">*</span></label><select name="lehrjahr" required>${['', 1, 2, 3, 4].map((n) => `<option value="${n}" ${String(n) === String(u.lehrjahr) ? 'selected' : ''}>${n ? n + '. Lehrjahr' : 'Bitte wählen'}</option>`).join('')}</select>`;
   }
 
   /* ---------- Einfuehrung ---------- */
@@ -323,7 +322,7 @@
       ${h('3. Welche Daten werden gespeichert?')}
       <ul>
         <li><strong>Konto:</strong> Benutzername und Passwort. Das Passwort wird nur verschlüsselt (als nicht umkehrbarer Hash) gespeichert.</li>
-        <li><strong>Deine Angaben:</strong> Vor- und Nachname, Firma, Lehrberuf, Lehrjahr, Jahr des Ausbildungsendes, Stunden und Berufsschultage.</li>
+        <li><strong>Deine Angaben:</strong> Vor- und Nachname, Firma, Lehrberuf, Lehrjahr, Stunden und Berufsschultage.</li>
         <li><strong>Deine Berichte:</strong> Texte, Stunden, Ausbildungsbereich, Nummer, Datum der Unterschrift und frühere Fassungen, wenn du einen Bericht nachträglich änderst.</li>
         <li><strong>Unterschrift:</strong> das Bild deiner Unterschrift, das du hochlädst oder zeichnest.</li>
         <li><strong>Hilfen:</strong> Arbeitsorte (z. B. Adresse und Name von Ausbilder oder Geselle), Textbausteine und dein Wörterbuch. Bitte trage bei Dritten nur ein, was für den Bericht nötig ist.</li>
@@ -337,7 +336,7 @@
       <p>Auf einem gemieteten Server der Hetzner Online GmbH (Industriestr. 25, 91710 Gunzenhausen) in ${esc(d.serverOrt || 'Deutschland')}. Hetzner verarbeitet die Daten nur als technischer Dienstleister (Auftragsverarbeitung) und nicht für eigene Zwecke. Die Verbindung ist per https verschlüsselt.</p>
       <p>Die Rechtschreib- und Grammatikprüfung läuft auf demselben Server. Deine Texte werden dafür <strong>nicht</strong> an andere Anbieter geschickt. Es werden keine Schriften, Skripte oder Inhalte von fremden Servern geladen.</p>
       ${h('7. Wer kann die Daten sehen?')}
-      <p>Deine Berichte siehst nur du. Der Admin-Bereich zeigt nur Kontodaten (Name, Firma, Lehrberuf, Ausbildungsende, Aktivität und belegten Speicher), keine Berichte. Als Betreiber des Servers hat der Verantwortliche technisch Zugriff auf alle gespeicherten Daten. Er nutzt diesen Zugriff nur für Wartung, Fehlerbehebung und Sicherungen.</p>
+      <p>Deine Berichte siehst nur du. Der Admin-Bereich zeigt nur Kontodaten (Name, Firma, Lehrberuf, Aktivität und belegten Speicher), keine Berichte. Als Betreiber des Servers hat der Verantwortliche technisch Zugriff auf alle gespeicherten Daten. Er nutzt diesen Zugriff nur für Wartung, Fehlerbehebung und Sicherungen.</p>
       ${h('8. Wie lange werden Daten gespeichert?')}
       <p>So lange dein Konto besteht. Nach dem Ende deiner Ausbildung kann dein Konto mit allen Berichten gelöscht werden. Du bekommst vorher einen Hinweis, um alles als PDF zu sichern. Zur Ausfallsicherheit gibt es Sicherungskopien des Servers: tägliche werden nach 14 Tagen gelöscht, monatliche nach spätestens 4 Jahren. Ausbildungsnachweise werden oft noch nach der Prüfung gebraucht.</p>
       ${h('9. Rechtsgrundlage')}
@@ -364,7 +363,7 @@
       ${q('Speicherplatz', 'Jedes Konto hat eine Speichergrenze, damit der Server nicht voll wird. Wie viel belegt ist, siehst du in den Einstellungen. Berichte brauchen nur wenige KB. Wenn es voll ist, kann der Admin dir mehr geben.')}
       ${q('Unterschreiben und PDF speichern', '<ol><li>Unter dem Formular das Datum wählen (heute oder ein anderes).</li><li><strong>Prüfen & unterschreiben</strong> tippen. Es wird noch einmal alles geprüft.</li><li><strong>PDF speichern</strong> tippen. Am iPhone „In Dateien sichern“ wählen, am PC mit Chrome/Edge kannst du einen festen Ordner einstellen.</li></ol>')}
       ${q('Später etwas ändern', 'Nach dem Unterschreiben kannst du einen Bericht noch 3 Monate lang über <strong>Nachträglich bearbeiten</strong> ändern. Danach musst du neu unterschreiben, im PDF steht dann klein „korrigiert“.')}
-      ${q('Ende der Ausbildung', 'In deinen Angaben steht, wann deine Ausbildung endet. Ist das Jahr erreicht, kann dein Konto gelöscht werden. Du bekommst einmal einen Hinweis. Unter <strong>Einstellungen → Alle Berichte sichern</strong> lädst du jederzeit alle PDFs als ZIP herunter.')}
+      ${q('Alle Berichte sichern', 'Unter <strong>Einstellungen → Alle Berichte sichern</strong> lädst du jederzeit alle PDFs als ZIP-Datei herunter. Am besten ab und zu machen, spätestens zum Ende der Ausbildung.')}
       ${q('Passwort vergessen?', 'Ein neues Passwort kann nur der Admin erstellen. Melde dich bei ihm, du bekommst ein neues Startpasswort. Damit meldest du dich an und legst wieder ein eigenes fest.')}
       ${q('Als App auf den Startbildschirm', '<ul><li><strong>iPhone (Safari):</strong> Teilen-Symbol → „Zum Home-Bildschirm“.</li><li><strong>Android (Chrome):</strong> Menü ⋮ → „Zum Startbildschirm hinzufügen“.</li></ul>')}
       <p class="muted mt2">${esc(HINWEIS)}</p>`;
@@ -399,19 +398,8 @@
     /* Fortschrittsbalken per Skript setzen (Inline-Styles sind aus Sicherheitsgruenden gesperrt) */
     fillBars();
     const btn = $('#newbtn'); if (btn) btn.onclick = () => newReport(next);
-    if (S.user.endeErreicht && !S.user.endeHinweisGesehen) setTimeout(endeHinweis, 400);
   }
 
-  /* Einmaliger Hinweis, wenn das Endjahr der Ausbildung erreicht ist */
-  async function endeHinweis() {
-    const ch = await modal(`<div class="tour"><div class="big-ico">🎓</div><h2>Ausbildung bald geschafft</h2>
-      <p>Laut deinen Angaben endet deine Ausbildung ${S.user.endJahr}. Danach kann dein Konto mit allen Berichten <strong>gelöscht werden</strong>.</p>
-      <p><strong>Bitte sichere jetzt alle deine Berichte.</strong> Du bekommst alle PDFs in einer ZIP-Datei.</p>
-      <p class="muted small-t">Dieser Hinweis kommt nur einmal. Sichern kannst du später auch unter Einstellungen.</p>
-      <div class="actions"><button data-m="ok">Verstanden</button><button class="primary" data-m="zip">Jetzt alle sichern</button></div></div>`);
-    try { S.user = (await api('POST', '/api/me', { endeHinweisGesehen: true })).user; } catch {}
-    if (ch === 'zip') exportAll();
-  }
   async function exportAll(btn) {
     await busy(btn, async () => {
       toast('ZIP wird erstellt …');
@@ -967,12 +955,12 @@
         <form id="bf" class="row mt"><input type="text" name="t" placeholder="Neuer Textbaustein" class="grow" maxlength="300"><button>Hinzufügen</button></form></div>
 
       <div class="card"><h2>Unterschrift</h2>
-        <p class="muted">Wird beim Unterschreiben mit Datum eingesetzt, jedes Mal minimal anders, wie von Hand. Mit dem Finger oder der Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen.</p>
+        <p class="muted">Wird beim Unterschreiben mit Datum eingesetzt, jedes Mal minimal anders, wie von Hand. Mit dem Finger oder der Maus unterschreiben, oder ein Bild deiner Unterschrift hochladen (Foto oder Scan auf weißem Papier, PNG oder JPG). Der weiße Hintergrund wird automatisch entfernt, die Unterschrift wird schwarz.</p>
         ${lockNote('unterschreiben')}
         <div id="cursig">${u.hasSignature ? `<p>Aktuell hinterlegt:</p><img class="sigimg" src="/api/me/signature?t=${Date.now()}" alt="Unterschrift">` : '<div class="msg warn">Noch keine Unterschrift hinterlegt.</div>'}</div>
         <div class="sigpad mt"><canvas id="pad" width="900" height="300"></canvas><div class="base"></div><div class="hint2" id="padhint">Hier unterschreiben</div></div>
         <div class="actions"><button class="primary" id="sigsave">Unterschrift speichern</button><button id="sigclear">Feld leeren</button>
-        <label class="btn nomargin">Foto hochladen<input type="file" id="sigfile" accept="image/*" hidden></label></div><div id="serr"></div></div>
+        <label class="btn nomargin">Bild oder Datei hochladen<input type="file" id="sigfile" accept="image/*" hidden></label></div><div id="serr"></div></div>
 
       <div class="card"><h2>Speicherort für PDFs</h2><div id="folder"></div></div>
 
@@ -1077,7 +1065,7 @@
     let drawing = false, last = null, empty = true;
     const pos = (e) => { const r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * c.width / r.width, y: (e.clientY - r.top) * c.height / r.height }; };
     const setEmpty = (v) => { empty = v; $('#padhint').hidden = !v; };
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1a2a6c'; ctx.lineWidth = 5;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#000'; ctx.lineWidth = 5;
     c.onpointerdown = (e) => { drawing = true; last = pos(e); c.setPointerCapture(e.pointerId); setEmpty(false); ctx.beginPath(); ctx.arc(last.x, last.y, 2.2, 0, 7); ctx.fillStyle = ctx.strokeStyle; ctx.fill(); };
     c.onpointermove = (e) => {
       if (!drawing) return;
@@ -1095,10 +1083,19 @@
         const sc = Math.min(c.width / img.width, c.height / img.height) * 0.95;
         const w = img.width * sc, h = img.height * sc;
         ctx.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
-        const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data;
+        /* Weissen/hellen Hintergrund entfernen, Tinte schwarz machen. Helligkeit des Papiers wird gemessen,
+           damit auch graue Fotos (Schatten, schlechtes Licht) funktionieren. */
+        const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data, lum = [];
+        for (let i = 0; i < p.length; i += 4) if (p[i + 3] > 0) lum.push(0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2]);
+        lum.sort((x, y) => x - y);
+        const paper = lum.length ? lum[Math.floor(lum.length * 0.9)] : 255;
+        const ink = lum.length ? lum[Math.floor(lum.length * 0.01)] : 0;
+        const cut = ink + (paper - ink) * 0.55;
         for (let i = 0; i < p.length; i += 4) {
+          if (!p[i + 3]) continue;
           const l = 0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2];
-          if (l > 170) p[i + 3] = 0; else p[i + 3] = Math.min(p[i + 3], Math.round(255 * (170 - l) / 90) + 60);
+          const a = l >= cut ? 0 : Math.min(255, Math.round(255 * (cut - l) / Math.max(1, cut - ink) * 1.6));
+          p[i] = p[i + 1] = p[i + 2] = 0; p[i + 3] = a;
         }
         ctx.putImageData(d, 0, 0);
         setEmpty(false); URL.revokeObjectURL(img.src);
@@ -1176,16 +1173,15 @@
 
   async function adminUsers() {
     const { users } = await api('GET', '/api/admin/users');
-    const azubis = users.filter((u) => u.role !== 'admin').sort((x, y) => (y.endeErreicht - x.endeErreicht) || x.username.localeCompare(y.username));
+    const azubis = users.filter((u) => u.role !== 'admin').sort((x, y) => x.username.localeCompare(y.username));
     const admins = users.filter((u) => u.role === 'admin');
-    const beendet = azubis.filter((u) => u.endeErreicht).length;
     const card = (u) => `<div class="item">
       <div class="main"><strong>${u.vorname || u.nachname ? esc(`${u.vorname} ${u.nachname}`) : '<span class="muted">Noch nicht eingerichtet</span>'} <span class="muted">@${esc(u.username)}</span></strong>
         <span class="muted">${u.firma ? esc(u.firma) : 'Firma –'}</span><br>
-        ${u.role === 'admin' ? '' : `<span class="muted">${u.beruf ? esc(u.beruf) : 'Lehrberuf –'} · Ausbildungsende ${u.endJahr || '–'}</span><br>`}
+        ${u.role === 'admin' ? '' : `<span class="muted">${u.beruf ? esc(u.beruf) : 'Lehrberuf –'}</span><br>`}
         <span class="muted small-t">Dabei ${since(u.created)} · zuletzt aktiv ${ago(u.lastSeen)}${u.role === 'admin' ? '' : ` · ${u.reports} Berichte`}</span>
         ${u.role === 'admin' ? '' : speicherBar(u.speicher)}</div>
-      ${u.active ? '' : '<span class="chip bad">Gesperrt</span>'}${u.mustChange ? '<span class="chip warn">Startpasswort</span>' : ''}${u.endeErreicht ? '<span class="chip bad">Ausbildung beendet</span>' : ''}${u.role === 'admin' ? '<span class="chip brand">Admin</span>' : ''}
+      ${u.active ? '' : '<span class="chip bad">Gesperrt</span>'}${u.mustChange ? '<span class="chip warn">Startpasswort</span>' : ''}${u.role === 'admin' ? '<span class="chip brand">Admin</span>' : ''}
       <div class="row">
         <button class="small" data-u="${esc(u.id)}" data-a="edit">Bearbeiten</button>
         <button class="small" data-u="${esc(u.id)}" data-a="pw">Neues Passwort</button>
@@ -1194,12 +1190,11 @@
         <button class="small danger" data-u="${esc(u.id)}" data-a="delete">Löschen</button>`}
       </div></div>`;
     $('#adm').innerHTML = `<div class="card"><h2>Neues Konto</h2>
-      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma, Lehrberuf, Lehrjahr und Ausbildungsende ein.</p>
+      <p class="muted">Nur einen Benutzernamen eingeben. Du bekommst ein kurzes Startpasswort. Beim ersten Anmelden legt die Person ein eigenes Passwort fest und trägt Name, Firma, Lehrberuf und Lehrjahr ein.</p>
       <form id="nf" class="row"><input type="text" name="username" autocapitalize="none" required placeholder="z. B. carlo.w" class="grow">
       <select name="role" class="auto-w"><option value="azubi">Azubi</option><option value="admin">Admin</option></select><button class="primary">Anlegen</button></form>
       <div id="nerr"></div>
       <p class="muted small-t">Tipp: Lege dir für deine eigenen Berichte ein normales Azubi-Konto an. Der Admin-Zugang ist nur zum Verwalten.</p></div>
-      ${beendet ? `<div class="msg warn">${beendet} Konto${beendet > 1 ? 'en' : ''} mit beendeter Ausbildung (Endjahr erreicht). Diese stehen oben und können gelöscht werden.</div>` : ''}
       ${S.datenschutz && S.datenschutz.name ? '' : '<div class="msg warn">Bitte unter <a href="#/admin/einstellungen">Einstellungen</a> deinen Namen und eine Kontakt-E-Mail für die Datenschutzerklärung eintragen.</div>'}
       <h2>Azubis (${azubis.length})</h2><div class="list">${azubis.map(card).join('') || '<div class="card muted">Noch keine Konten.</div>'}</div>
       <h2 class="mt2">Admins (${admins.length})</h2><div class="list">${admins.map(card).join('')}</div>
@@ -1233,7 +1228,6 @@
       if (a === 'delete') {
         const res = await modal(`<form><h2>@${esc(u.username)} endgültig löschen?</h2>
           <p>Das Konto und <strong>alle ${u.reports} Berichte</strong> werden gelöscht. Das kann nicht rückgängig gemacht werden.</p>
-          ${u.endeErreicht ? '' : '<div class="msg warn">Die Ausbildung ist laut Angabe noch nicht beendet.</div>'}
           <p class="muted">Tipp: Vorher die Person bitten, unter Einstellungen „Alle Berichte sichern“ zu tippen.</p>
           <label>Zur Bestätigung den Benutzernamen eintippen: <code>${esc(u.username)}</code></label><input type="text" name="confirm" autocapitalize="none" autocomplete="off" required>
           <div class="actions"><button class="danger" data-m="form">Endgültig löschen</button><button type="button" data-m="no">Abbrechen</button></div></form>`);
@@ -1245,7 +1239,7 @@
         const res = await modal(`<form><h2>@${esc(u.username)} bearbeiten</h2>
           <div class="grid"><div><label>Vorname</label><input type="text" name="vorname" value="${esc(u.vorname)}"></div><div><label>Nachname</label><input type="text" name="nachname" value="${esc(u.nachname)}"></div></div>
           <label>Firma</label><input type="text" name="firma" value="${esc(u.firma)}">
-          <div class="grid"><div><label>Lehrberuf</label><input type="text" name="beruf" value="${esc(u.beruf)}"></div><div><label>Ausbildungsende (Jahr)</label><input type="number" name="endJahr" min="2000" max="2100" value="${esc(u.endJahr)}"></div></div>
+          <label>Lehrberuf</label><input type="text" name="beruf" value="${esc(u.beruf)}">
           ${u.role === 'admin' ? '' : `<label>Speicherplatz in MB</label><input type="number" name="speicherMB" min="1" max="10000" value="${u.speicherMB || ''}" placeholder="leer = Standard für alle">
           <div class="hint">Belegt: ${mb(u.speicher.used)} MB. Leer lassen für den Standard.</div>`}
           <div class="actions"><button class="primary" data-m="form">Speichern</button><button type="button" data-m="no">Abbrechen</button></div></form>`);

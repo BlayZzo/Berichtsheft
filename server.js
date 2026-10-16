@@ -11,11 +11,11 @@ const path = require('path');
 const crypto = require('crypto');
 const W = require('./lib/weeks');
 const { fill, fitDay } = require('./lib/fill');
-const { decodePng } = require('./lib/png');
+const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.8.0';
+const VERSION = '3.9.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -95,7 +95,7 @@ const db = readJson(DB_FILE, { users: {}, reports: {}, settings: {} });
 db.users ||= {}; db.reports ||= {};
 db.settings = merge(DEFAULT_SETTINGS, db.settings || {});
 /* Abteilung, Standort und Arbeitsweise werden nicht mehr erfasst: vorhandene Angaben loeschen (Datensparsamkeit) */
-for (const u of Object.values(db.users)) { delete u.arbeitsplatz; delete u.standort; delete u.abteilung; delete u.arbeitsart; }
+for (const u of Object.values(db.users)) { delete u.arbeitsplatz; delete u.standort; delete u.abteilung; delete u.arbeitsart; delete u.endJahr; delete u.endeHinweisGesehen; }
 let saveTimer = null;
 function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => writeJson(DB_FILE, db), 50); }
 function saveNow() { clearTimeout(saveTimer); writeJson(DB_FILE, db); }
@@ -218,8 +218,7 @@ function publicUser(u) {
   return {
     id: u.id, username: u.username, role: u.role, mustChange: !!u.mustChange, created: u.created,
     vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '',
-    beruf: u.beruf || '', endJahr: u.endJahr || '', lehrjahr: u.lehrjahr || '',
-    endeErreicht: endeErreicht(u), endeHinweisGesehen: !!u.endeHinweisGesehen,
+    beruf: u.beruf || '', lehrjahr: u.lehrjahr || '',
     genau: u.genau !== false, theme: u.theme || 'auto', speicher: speicherInfo(u),
     bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
     hasSignature: !!u.sig, woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
@@ -227,10 +226,9 @@ function publicUser(u) {
   };
 }
 /* Pflichtangaben: Azubis brauchen Name, Firma, Standort und Lehrjahr */
-const PFLICHT = ['vorname', 'nachname', 'firma', 'beruf', 'lehrjahr', 'endJahr', 'datenschutzAm'];
+const PFLICHT = ['vorname', 'nachname', 'firma', 'beruf', 'lehrjahr', 'datenschutzAm'];
 const profileMissing = (u) => (u.role === 'admin' ? [] : PFLICHT.filter((k) => !u[k]));
-/* Ausbildung beendet, sobald das eingetragene Endjahr erreicht ist */
-const endeErreicht = (u) => !!u.endJahr && Number(heute().slice(0, 4)) >= Number(u.endJahr);
+
 
 /* ---------- Speicherplatz pro Konto (nur die Groesse wird gezaehlt, nicht der Inhalt angesehen) ---------- */
 const MB = 1024 * 1024;
@@ -603,8 +601,6 @@ route('POST', '/api/me', 'user', (ctx) => {
   for (const k of ['vorname', 'nachname']) if (k in b) { const v = str(b[k], 60); if (!v && u.role !== 'admin') fail(400, 'Vorname und Nachname sind Pflichtfelder.'); u[k] = v; }
   const NAMEN = { firma: 'Firma', beruf: 'Lehrberuf' };
   for (const k of Object.keys(NAMEN)) if (k in b) { const v = str(b[k], 120); if (!v && u.role !== 'admin') fail(400, `${NAMEN[k]} ist ein Pflichtfeld.`); u[k] = v; }
-  if ('endJahr' in b) { const y = Math.round(num(b.endJahr, 2000, 2100, 0)); if (!y) fail(400, 'Bitte das Jahr eintragen, in dem deine Ausbildung endet.'); u.endJahr = y; }
-  if ('endeHinweisGesehen' in b) u.endeHinweisGesehen = !!b.endeHinweisGesehen;
   if ('genau' in b) u.genau = !!b.genau;
   if ('theme' in b && ['auto', 'light', 'dark'].includes(b.theme)) u.theme = b.theme;
   if (b.datenschutzOk === true || b.datenschutzOk === 'on') u.datenschutzAm = new Date().toISOString();
@@ -636,7 +632,9 @@ route('POST', '/api/me/signature', 'azubi', (ctx) => {
 route('GET', '/api/me/signature', 'azubi', (ctx) => {
   const file = ctx.user.sig && path.join(SIG_DIR, ctx.user.sig + '.png');
   if (!file || !fs.existsSync(file)) fail(404, 'Keine Unterschrift hinterlegt.');
-  return { raw: fs.readFileSync(file), type: 'image/png' };
+  /* Immer in Schwarz anzeigen, so wie sie auch im PDF erscheint */
+  const img = decodePng(fs.readFileSync(file));
+  return { raw: encodePng({ ...img, rgb: Buffer.alloc(img.rgb.length) }), type: 'image/png' };
 });
 
 route('POST', '/api/me/dict', 'azubi', (ctx) => {
@@ -831,7 +829,7 @@ function adminUserView(u) {
   return {
     id: u.id, username: u.username, role: u.role, active: u.active, mustChange: !!u.mustChange,
     vorname: u.vorname || '', nachname: u.nachname || '', firma: u.firma || '',
-    beruf: u.beruf || '', endJahr: u.endJahr || '', endeErreicht: endeErreicht(u),
+    beruf: u.beruf || '',
     speicher: speicherInfo(u), speicherMB: u.speicherMB || null, created: u.created, lastSeen: u.lastSeen || u.lastLogin || null, reports: ownReports(u.id).length
   };
 }
@@ -867,7 +865,6 @@ route('POST', '/api/admin/user', 'admin', (ctx) => {
   }
   for (const k of ['vorname', 'nachname']) if (k in b) u[k] = str(b[k], 60);
   for (const k of ['firma', 'beruf']) if (k in b) u[k] = str(b[k], 120);
-  if ('endJahr' in b) u.endJahr = Math.round(num(b.endJahr, 2000, 2100, 0)) || '';
   if ('speicherMB' in b) { const v = b.speicherMB === null || b.speicherMB === '' ? null : num(b.speicherMB, 1, 10000, null); u.speicherMB = v; }
   if (b.extendDays) {
     const until = new Date(Date.now() + num(b.extendDays, 1, 365, 30) * 864e5).toISOString();
@@ -878,7 +875,7 @@ route('POST', '/api/admin/user', 'admin', (ctx) => {
   return { user: adminUserView(u), ...out };
 });
 
-/* Konto endgueltig loeschen (z. B. nach Ende der Ausbildung). Bestaetigung durch Eintippen des Benutzernamens. */
+/* Konto endgueltig loeschen. Bestaetigung durch Eintippen des Benutzernamens. */
 route('POST', '/api/admin/delete', 'admin', (ctx) => {
   const u = db.users[str(ctx.body.id, 60)];
   if (!u) fail(404, 'Unbekanntes Konto.');
