@@ -298,3 +298,12 @@ details.gruppe { border: 0; background: none; border-radius: 0; margin-bottom: 0
 details.gruppe > summary { padding: 0; }
 details.gruppe > summary::before { margin-right: 0; }
 details.gruppe > div { padding: 0; }
+
+/* Groesse/Lage der Unterschrift */
+.layprev { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; margin: .6rem 0 .8rem; }
+.layprev canvas { display: block; width: 100%; height: auto; }
+.laygrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .4rem 1.2rem; }
+label.lay { display: flex; flex-direction: column; gap: .2rem; font-weight: 500; }
+label.lay span { display: flex; justify-content: space-between; gap: .5rem; font-size: .92rem; }
+label.lay b { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+label.lay input[type=range] { width: 100%; accent-color: var(--brand, #1f4e8c); padding: 0; min-height: 28px; }

@@ -10,12 +10,12 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const W = require('./lib/weeks');
-const { fill, fitDay } = require('./lib/fill');
+const { fill, fitDay, cleanLayout } = require('./lib/fill');
 const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.11.0';
+const VERSION = '3.12.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -221,7 +221,7 @@ function publicUser(u) {
     beruf: u.beruf || '', lehrjahr: u.lehrjahr || '',
     genau: u.genau !== false, theme: u.theme || 'auto', speicher: speicherInfo(u),
     bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
-    hasSignature: !!u.sig, woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
+    hasSignature: !!u.sig, sigLayout: cleanLayout(u.sigLayout), woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
     tutorialDone: !!u.tutorialDone, active: u.active
   };
 }
@@ -347,7 +347,8 @@ function buildPdf(r, { blank = false, preview = null } = {}) {
     von: deKurz(r.weekStart), bis: deKurz(lastDay(r)), days: rows,
     sigDate: done ? W.de(r.sigDate) : preview ? W.de(preview.date) : '',
     signature: done ? loadSignature(r.sig) : preview ? loadSignature(preview.sig) : null,
-    seed: r.id + (r.signedAt || preview && preview.date), footer
+    seed: r.id + (r.signedAt || preview && preview.date), footer,
+    layout: done && r.sigLayout ? r.sigLayout : (db.users[r.userId] || {}).sigLayout
   });
   return { pdf, name: fileName(r) };
 }
@@ -603,6 +604,7 @@ route('POST', '/api/me', 'user', (ctx) => {
   for (const k of Object.keys(NAMEN)) if (k in b) { const v = str(b[k], 120); if (!v && u.role !== 'admin') fail(400, `${NAMEN[k]} ist ein Pflichtfeld.`); u[k] = v; }
   if ('genau' in b) u.genau = !!b.genau;
   if ('theme' in b && ['auto', 'light', 'dark'].includes(b.theme)) u.theme = b.theme;
+  if ('sigLayout' in b) u.sigLayout = cleanLayout(b.sigLayout);
   if (b.datenschutzOk === true || b.datenschutzOk === 'on') u.datenschutzAm = new Date().toISOString();
   if ('lehrjahr' in b) u.lehrjahr = Math.round(num(b.lehrjahr, 1, 4, 1));
   if ('bereich' in b) u.bereich = str(b.bereich, 40);
@@ -760,6 +762,7 @@ route('POST', '/api/report/finish', 'azubi', (ctx) => {
   if (r.firstSignedAt !== now) r.korrigiertAm = now;
   r.kopf = { vorname: u.vorname, nachname: u.nachname };
   r.sig = u.sig;
+  r.sigLayout = cleanLayout(u.sigLayout); /* Groesse/Lage beim Unterschreiben festhalten */
   r.hash = contentHash(r);
   saveNow();
   return { report: reportView(r) };

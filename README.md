@@ -22,7 +22,8 @@ Eigenständiges Programm unter https://bh-bremen.de
   (Rechtschreibung rot, Grammatik blau, Zeichensetzung orange, Stil lila). Wort antippen → Vorschlag übernehmen,
   „Alle Rechtschreibfehler korrigieren“, Wörterbuch, genaue Prüfung (Stil, Füllwörter) zuschaltbar.
 - **Unterschrift** immer in Schwarz: auf dem Bildschirm zeichnen oder als Foto/Scan (auf weißem Papier)
-  hochladen, der Hintergrund wird automatisch entfernt. Wählbares Datum, jedes Mal minimal anders gesetzt. PDF `Berichtsheft_Nachname_NRx.pdf`,
+  hochladen, der Hintergrund wird automatisch entfernt. Größe und Lage von Unterschrift und Datum
+  per Regler mit Live-Vorschau einstellbar (wird beim Unterschreiben im Bericht festgehalten). Wählbares Datum, jedes Mal minimal anders gesetzt. PDF `Berichtsheft_Nachname_NRx.pdf`,
   am PC fester Speicherordner, am Handy „In Dateien sichern“. 90 Tage nachträglich bearbeitbar.
 - **Konten:** eigener reiner Admin-Zugang plus normale Konten. Admin gibt nur einen Benutzernamen ein und bekommt
   ein kurzes Startpasswort und einen fertigen Text zum Weiterschicken (z. B. WhatsApp). Beim ersten Anmelden:
