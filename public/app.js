@@ -324,7 +324,7 @@
         <li><strong>Konto:</strong> Benutzername und Passwort. Das Passwort wird nur verschlüsselt (als nicht umkehrbarer Hash) gespeichert.</li>
         <li><strong>Deine Angaben:</strong> Vor- und Nachname, Firma, Lehrberuf, Lehrjahr, Stunden und Berufsschultage.</li>
         <li><strong>Deine Berichte:</strong> Texte, Stunden, Ausbildungsbereich, Nummer, Datum der Unterschrift und frühere Fassungen, wenn du einen Bericht nachträglich änderst.</li>
-        <li><strong>Unterschrift:</strong> das Bild deiner Unterschrift, das du hochlädst oder zeichnest.</li>
+        <li><strong>Unterschrift:</strong> das Bild deiner Unterschrift, das du hochlädst oder zeichnest, und, falls du es einschaltest, das Bild der Unterschrift deiner/s gesetzlichen Vertreter/in (bitte nur mit deren Einverständnis hinterlegen).</li>
         <li><strong>Hilfen:</strong> Arbeitsorte (z. B. Adresse und Name von Ausbilder oder Geselle), Textbausteine und dein Wörterbuch. Bitte trage bei Dritten nur ein, was für den Bericht nötig ist.</li>
         <li><strong>Technisch:</strong> Zeitpunkt der Kontoerstellung, der letzten Anmeldung und der letzten Aktivität sowie die belegte Speichermenge.</li>
       </ul>
@@ -356,7 +356,7 @@
     app.innerHTML = `<div class="toprow"><a href="#/" class="back">‹ Zurück</a></div><h1>Anleitung</h1><p class="muted">Kurz erklärt, Schritt für Schritt.</p>
       ${S.user && !isAdmin() ? '<div class="actions"><button class="primary" id="tourbtn">Einführung noch einmal ansehen</button></div><div class="mt"></div>' : ''}
       ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Name, Firma, Lehrberuf, Lehrjahr und das Jahr, in dem die Ausbildung endet, eintragen.</li></ol>', true)}
-      ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen. Darunter stellst du mit Reglern ein, wie groß Unterschrift und Datum im PDF sind und wo die Unterschrift sitzt.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
+      ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen. Darunter stellst du mit Reglern ein, wie groß Unterschrift und Datum im PDF sind und wo die Unterschrift sitzt.</li><li><strong>Einstellungen → Unterschrift gesetzliche/r Vertreter/in:</strong> Häkchen setzen, dann ausklappen, unterschreiben lassen und Größe einstellen. Sie wird mit demselben Datum unten links eingesetzt.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
       ${q('Neuen Wochenbericht anlegen', '<ol><li>Auf der Startseite <strong>Neuer Wochenbericht</strong> tippen.</li><li><strong>Diese Woche</strong> oder <strong>Nächste Woche</strong> wählen, oder ein beliebiges Datum. Die Woche wird automatisch auf Montag bis Sonntag gesetzt.</li><li>Die Nummer zählt von selbst weiter. Nur ändern, wenn sie nicht stimmt.</li><li>Ausbildungsbereich wählen, z. B. AW, BBS oder Betrieb.</li></ol>')}
       ${q('Tage ausfüllen', '<ul><li>Alles wird beim Schreiben gespeichert. Du kannst den Bericht jederzeit schließen und später weitermachen, auch auf einem anderen Gerät.</li><li><strong>Einfügen:</strong> setzt einen Arbeitsort oder Textbaustein an der Stelle ein, wo der Cursor steht.</li><li><strong>Markiertes merken:</strong> Text im Feld markieren und tippen. Er wird ein Textbaustein für später.</li><li><strong>Ideen:</strong> Vorschläge aus deinen früheren Berichten und den anderen Tagen der Woche. Einfügen oder kopieren, danach selbst anpassen.</li><li><strong>Rückgängig:</strong> macht das letzte Einfügen, die letzte Idee oder Korrektur wieder rückgängig.</li><li>Über das kleine Auswahlfeld beim Tag stellst du Urlaub, Krank, Feiertag oder Berufsschule ein.</li></ul>')}
       ${q('Rechtschreibung', '<ul><li>Wird beim Schreiben automatisch geprüft. Fehler sind direkt im Text farbig unterstrichen: <span class="dot a-rs"></span>Rechtschreibung, <span class="dot a-gr"></span>Grammatik, <span class="dot a-zs"></span>Zeichensetzung, <span class="dot a-st"></span>Stil.</li><li>Markiertes Wort antippen: grüner Knopf = Vorschlag übernehmen, „So lassen“ = Hinweis ausblenden.</li><li>„Alle Rechtschreibfehler korrigieren“ übernimmt jeweils den ersten Vorschlag. Mit „Rückgängig“ nimmst du es zurück.</li><li>Fachwörter mit „Ins Wörterbuch“ speichern.</li><li>In den Einstellungen kannst du die <strong>genaue Prüfung</strong> einschalten (auch Stil und Füllwörter).</li></ul>')}
@@ -517,6 +517,9 @@
       html += `<div class="sigrow"><div><label for="sigdate">Datum</label><input type="date" id="sigdate" value="${today()}" max="${today()}"></div>
         <div class="sigprev">${u.hasSignature ? `<img src="/api/me/signature?t=${Date.now()}" alt="Unterschrift">` : '<a href="#/einstellungen">Unterschrift hinterlegen</a>'}</div>
         <div class="siglabel muted">Datum, Unterschrift Auszubildende/r</div></div>`;
+      if (u.vertreterAn) html += `<div class="sigrow v"><div class="muted small-t">gleiches Datum</div>
+        <div class="sigprev">${u.hasSignatureV ? `<img src="${sigUrl('V')}" alt="Unterschrift Vertreter/in">` : '<a href="#/einstellungen">Unterschrift Vertreter/in hinterlegen</a>'}</div>
+        <div class="siglabel muted">Datum, Unterschrift gesetzliche/r Vertreter/in</div></div>`;
     }
     html += '</div>';
     if (ed) {
@@ -919,6 +922,7 @@
       }
       const ok = await modal(`<h2>Unterschreiben</h2><p>Bericht Nr. ${R.rep.nr} bekommt deine Unterschrift mit dem Datum <strong>${de(date)}</strong> und wird als PDF erstellt.</p>
         <p><img class="sigimg" src="/api/me/signature?t=${Date.now()}" alt="Deine Unterschrift"></p>
+        ${S.user.vertreterAn && S.user.hasSignatureV ? `<p class="muted small-t">Dazu die Unterschrift der/des gesetzlichen Vertreter/in:</p><p><img class="sigimg" src="${sigUrl('V')}" alt="Unterschrift Vertreter/in"></p>` : ''}
         <p class="muted">Danach kannst du ihn noch ${S.settings.bearbeitbarTage} Tage lang ändern.</p>
         <div class="actions"><button class="ok" data-m="yes">Unterschreiben</button><button data-m="no">Abbrechen</button></div>`);
       if (ok !== 'yes') return;
@@ -993,22 +997,20 @@
       <div class="card"><h2>Unterschrift</h2>
         <p class="muted">Wird beim Unterschreiben mit Datum eingesetzt, jedes Mal minimal anders, wie von Hand. Mit dem Finger oder der Maus unterschreiben, oder ein Bild deiner Unterschrift hochladen (Foto oder Scan auf weißem Papier, PNG oder JPG). Der weiße Hintergrund wird automatisch entfernt, die Unterschrift wird schwarz.</p>
         ${lockNote('unterschreiben')}
-        <div id="cursig">${u.hasSignature ? `<p>Aktuell hinterlegt:</p><img class="sigimg" src="/api/me/signature?t=${Date.now()}" alt="Unterschrift">` : '<div class="msg warn">Noch keine Unterschrift hinterlegt.</div>'}</div>
-        <div class="sigpad mt"><canvas id="pad" width="900" height="300"></canvas><div class="base"></div><div class="hint2" id="padhint">Hier unterschreiben</div></div>
-        <div class="actions"><button class="primary" id="sigsave">Unterschrift speichern</button><button id="sigclear">Feld leeren</button>
-        <label class="btn nomargin">Bild oder Datei hochladen<input type="file" id="sigfile" accept="image/*" hidden></label></div><div id="serr"></div></div>
+        ${sigPadHtml('')}</div>
 
       <div class="card" id="laycard"><h2>Größe von Unterschrift und Datum</h2>
         <p class="muted">So sitzen Datum und Unterschrift im PDF über der Linie. Mit den Reglern Größe und Lage festlegen, die Änderung wird sofort gespeichert und gilt für alle Berichte, die du ab jetzt unterschreibst (und für die Vorschau).</p>
-        <div class="layprev"><canvas id="laycv" width="900" height="270" aria-label="Vorschau von Datum und Unterschrift"></canvas></div>
-        <div class="laygrid">
-          ${[['sigGroesse', 'Unterschrift: Größe', 40, 200, 5, (v) => v + ' %'],
-             ['sigX', 'Unterschrift: links ↔ rechts', -60, 120, 1, (v) => (v > 0 ? '+' : '') + v],
-             ['sigY', 'Unterschrift: tiefer ↕ höher', -6, 30, 0.5, (v) => (v > 0 ? '+' : '') + v],
-             ['datumGroesse', 'Datum: Schriftgröße', 7, 14, 0.5, (v) => String(v).replace('.', ',') + ' pt']]
-            .map(([k, t, mi, ma, st]) => `<label class="lay"><span>${t} <b data-out="${k}"></b></span><input type="range" data-lay="${k}" min="${mi}" max="${ma}" step="${st}"></label>`).join('')}
-        </div>
-        <div class="actions"><button id="layreset">Standard wiederherstellen</button><span class="muted small-t" id="laystate"></span></div></div>
+        ${layHtml('')}</div>
+
+      <div class="card" id="vcard"><h2>Unterschrift gesetzliche/r Vertreter/in</h2>
+        <label class="inline vtog"><input type="checkbox" id="vtog" ${u.vertreterAn ? 'checked' : ''}> Unterschrift der/des gesetzlichen Vertreter/in im Dokument einfügen</label>
+        <p class="muted small-t">Z. B. wenn du noch nicht 18 bist und deine Eltern mit unterschreiben. Wird getrennt von deiner eigenen Unterschrift gespeichert und mit demselben Datum unten links bei „Datum, Unterschrift gesetzliche/r Vertreter/in“ eingesetzt, ebenfalls jedes Mal minimal anders.</p>
+        <div id="vbody" ${u.vertreterAn ? '' : 'hidden'}>
+          ${sigPadHtml('V')}
+          <h3 class="mt2">Größe und Lage</h3>
+          ${layHtml('V')}
+        </div></div>
 
       <div class="card"><h2>Speicherort für PDFs</h2><div id="folder"></div></div>
 
@@ -1039,7 +1041,7 @@
       catch (x) { errBox($('#perr'), x.message); }
     };
     bindPw(() => toast('Passwort geändert.'));
-    bindDict(); signaturePad(); layoutEditor(); folderCard(); orteEditor(); bausteineEditor(); fillBars();
+    bindDict(); signaturePad(''); layoutEditor(''); signaturePad('V'); layoutEditor('V'); vertreterToggle(); folderCard(); orteEditor(); bausteineEditor(); fillBars();
     $('#tour2').onclick = () => tutorial(true);
     $('#genau').onchange = async (e) => {
       try { S.user = (await api('POST', '/api/me', { genau: e.target.checked })).user; toast(e.target.checked ? 'Genaue Prüfung ist an.' : 'Normale Prüfung.'); } catch (x) { toast(x.message); }
@@ -1108,62 +1110,101 @@
     };
   }
 
+  /* Unterschrift-Feld; sfx '' = eigene, 'V' = gesetzliche/r Vertreter/in */
+  const sigUrl = (sfx) => `/api/me/signature?${sfx ? 'who=v&' : ''}t=${Date.now()}`;
+  const hasSig = (sfx) => (sfx ? S.user.hasSignatureV : S.user.hasSignature);
+  function curSigHtml(sfx) {
+    return hasSig(sfx) ? `<p>Aktuell hinterlegt:</p><img class="sigimg" src="${sigUrl(sfx)}" alt="Unterschrift">` : '<div class="msg warn">Noch keine Unterschrift hinterlegt.</div>';
+  }
+  function sigPadHtml(sfx) {
+    return `<div id="cursig${sfx}">${curSigHtml(sfx)}</div>
+        <div class="sigpad mt"><canvas id="pad${sfx}" width="900" height="300"></canvas><div class="base"></div><div class="hint2" id="padhint${sfx}">${sfx ? 'Hier unterschreibt die/der gesetzliche Vertreter/in' : 'Hier unterschreiben'}</div></div>
+        <div class="actions"><button class="primary" id="sigsave${sfx}">Unterschrift speichern</button><button id="sigclear${sfx}">Feld leeren</button>
+        <label class="btn nomargin">Bild oder Datei hochladen<input type="file" id="sigfile${sfx}" accept="image/*" hidden></label></div><div id="serr${sfx}"></div>`;
+  }
+  function layHtml(sfx) {
+    return `<div class="layprev"><canvas id="laycv${sfx}" width="900" height="270" aria-label="Vorschau von Datum und Unterschrift"></canvas></div>
+        <div class="laygrid" id="laygrid${sfx}">
+          ${[['sigGroesse', 'Unterschrift: Größe', 40, 200, 5], ['sigX', 'Unterschrift: links ↔ rechts', -60, 120, 1],
+             ['sigY', 'Unterschrift: tiefer ↕ höher', -6, 30, 0.5], ['datumGroesse', 'Datum: Schriftgröße', 7, 14, 0.5]]
+            .map(([k, t, mi, ma, st]) => `<label class="lay"><span>${t} <b data-out="${k}"></b></span><input type="range" data-lay="${k}" min="${mi}" max="${ma}" step="${st}"></label>`).join('')}
+        </div>
+        <div class="actions"><button id="layreset${sfx}">Standard wiederherstellen</button><span class="muted small-t" id="laystate${sfx}"></span></div>`;
+  }
+  function vertreterToggle() {
+    const t = $('#vtog'); if (!t) return;
+    t.onchange = async () => {
+      $('#vbody').hidden = !t.checked;
+      if (t.checked && layoutEditor.redraw) layoutEditor.redraw.V();
+      try { S.user = (await api('POST', '/api/me', { vertreterAn: t.checked })).user; toast(t.checked ? 'Unterschrift der/des Vertreter/in wird eingefügt.' : 'Unterschrift der/des Vertreter/in wird nicht mehr eingefügt.'); }
+      catch (x) { toast(x.message); t.checked = !t.checked; $('#vbody').hidden = !t.checked; }
+    };
+  }
+
   /* Groesse und Lage von Unterschrift/Datum: Vorschau im Massstab der PDF-Vorlage (Punkte) */
   const LAY_DEF = { sigGroesse: 100, sigX: 0, sigY: 0, datumGroesse: 10.5 };
   const LAY_FMT = { sigGroesse: (v) => v + ' %', sigX: (v) => (v > 0 ? '+' : '') + v, sigY: (v) => (v > 0 ? '+' : '') + String(v).replace('.', ','), datumGroesse: (v) => String(v).replace('.', ',') + ' pt' };
-  let laySig = null;
-  function layoutEditor() {
-    const cv = $('#laycv'); if (!cv) return;
-    const L = { ...LAY_DEF, ...(S.user.sigLayout || {}) };
+  function layoutEditor(sfx) {
+    const cv = $('#laycv' + sfx); if (!cv) return;
+    const root = $('#laygrid' + sfx), key = 'sigLayout' + sfx;
+    const L = { ...LAY_DEF, ...(S.user[key] || {}) };
+    let laySig = null;
     const loadSig = () => {
       laySig = null;
-      if (!S.user.hasSignature) return draw();
-      const im = new Image(); im.onload = () => { laySig = im; draw(); }; im.src = `/api/me/signature?t=${Date.now()}`;
+      if (!hasSig(sfx)) return draw();
+      const im = new Image(); im.onload = () => { laySig = im; draw(); }; im.src = sigUrl(sfx);
     };
-    /* Ausschnitt der Vorlage: x 55..400, y 97..200 (PDF-Punkte, y nach oben) */
-    const X0 = 55, X1 = 400, Y1 = 200, k = cv.width / (X1 - X0);
+    /* Ausschnitt der Vorlage um die Linie (PDF-Punkte, y nach oben). Eigene Linie y=119, Vertreter y=67 */
+    const lineY = sfx ? 67 : 119;
+    const X0 = 55, X1 = 400, Y1 = lineY + 81, k = cv.width / (X1 - X0);
     const px = (x) => (x - X0) * k, py = (y) => (Y1 - y) * k;
+    const font = (sz) => `${sz * k}px Helvetica, Arial, sans-serif`;
+    function line(y, label, col) {
+      const c = cv.getContext('2d');
+      c.strokeStyle = col; c.fillStyle = col; c.lineWidth = Math.max(1, 0.6 * k); c.font = font(7.5);
+      c.beginPath(); c.moveTo(px(71), py(y)); c.lineTo(px(291), py(y)); c.stroke(); c.fillText(label, px(73), py(y - 10));
+    }
     function draw() {
       const c = cv.getContext('2d');
-      c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
-      c.strokeStyle = '#000'; c.lineWidth = Math.max(1, 0.6 * k);
-      c.beginPath(); c.moveTo(px(71), py(119)); c.lineTo(px(291), py(119)); c.stroke();
-      c.fillStyle = '#000'; c.font = `${7.5 * k}px Helvetica, Arial, sans-serif`; c.textBaseline = 'alphabetic';
-      c.fillText('Datum, Unterschrift Auszubildende/r', px(73), py(109));
-      c.strokeStyle = '#bbb'; c.beginPath(); c.moveTo(px(317), py(119)); c.lineTo(px(X1), py(119)); c.stroke();
-      c.fillStyle = '#999'; c.fillText('Datum, Unterschrift Ausbild…', px(319), py(109)); c.fillStyle = '#000';
+      c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height); c.textBaseline = 'alphabetic';
+      if (sfx) { line(119, 'Datum, Unterschrift Auszubildende/r', '#aaa'); line(67, 'Datum, Unterschrift gesetzliche/r Vertreter/in', '#000'); }
+      else line(119, 'Datum, Unterschrift Auszubildende/r', '#000');
+      c.strokeStyle = '#bbb'; c.beginPath(); c.moveTo(px(317), py(lineY)); c.lineTo(px(X1), py(lineY)); c.stroke();
+      c.fillStyle = '#999'; c.font = font(7.5); c.fillText(sfx ? 'ggf. weitere Sichtvermerke …' : 'Datum, Unterschrift Ausbild…', px(319), py(lineY - 10)); c.fillStyle = '#000';
       const d = new Date(); const ds = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
-      c.font = `${L.datumGroesse * k}px Helvetica, Arial, sans-serif`;
-      c.fillText(ds, px(73), py(121 + L.datumGroesse * 0.28));
+      c.font = font(L.datumGroesse);
+      c.fillText(ds, px(73), py(lineY + 2 + L.datumGroesse * 0.28));
       if (laySig) {
         const base = Math.min(140 * L.sigGroesse / 100 / laySig.width, 44 * L.sigGroesse / 100 / laySig.height);
         const w = laySig.width * base, h = laySig.height * base;
-        c.drawImage(laySig, px(140 + L.sigX), py(121 + L.sigY + h), w * k, h * k);
+        c.drawImage(laySig, px(140 + L.sigX), py(lineY + 2 + L.sigY + h), w * k, h * k);
       } else {
-        c.fillStyle = '#888'; c.font = `${8 * k}px sans-serif`; c.fillText('(noch keine Unterschrift hinterlegt)', px(150), py(128));
+        c.fillStyle = '#888'; c.font = `${8 * k}px sans-serif`; c.fillText('(noch keine Unterschrift hinterlegt)', px(150), py(lineY + 9));
       }
     }
-    const inputs = $$('input[data-lay]');
-    const show = () => inputs.forEach((i) => { i.value = L[i.dataset.lay]; $(`[data-out=${i.dataset.lay}]`).textContent = LAY_FMT[i.dataset.lay](L[i.dataset.lay]); });
+    const inputs = $$('input[data-lay]', root), state = $('#laystate' + sfx);
+    const show = () => inputs.forEach((i) => { i.value = L[i.dataset.lay]; $(`[data-out=${i.dataset.lay}]`, root).textContent = LAY_FMT[i.dataset.lay](L[i.dataset.lay]); });
     let t = null;
     const store = () => {
-      clearTimeout(t); $('#laystate').textContent = 'Speichert …';
+      clearTimeout(t); state.textContent = 'Speichert …';
       t = setTimeout(async () => {
-        try { S.user = (await api('POST', '/api/me', { sigLayout: L })).user; Object.assign(L, S.user.sigLayout); show(); draw(); $('#laystate').textContent = '✓ Gespeichert'; }
-        catch (x) { $('#laystate').textContent = x.message; }
+        try { S.user = (await api('POST', '/api/me', { [key]: L })).user; Object.assign(L, S.user[key]); show(); draw(); state.textContent = '✓ Gespeichert'; }
+        catch (x) { state.textContent = x.message; }
       }, 450);
     };
     inputs.forEach((i) => { i.oninput = () => { L[i.dataset.lay] = Number(i.value); show(); draw(); store(); }; });
-    $('#layreset').onclick = () => { Object.assign(L, LAY_DEF); show(); draw(); store(); };
-    layoutEditor.reload = loadSig;
+    $('#layreset' + sfx).onclick = () => { Object.assign(L, LAY_DEF); show(); draw(); store(); };
+    (layoutEditor.reload ||= {})[sfx] = loadSig;
+    (layoutEditor.redraw ||= {})[sfx] = draw;
     show(); loadSig();
   }
 
-  function signaturePad() {
-    const c = $('#pad'), ctx = c.getContext('2d');
+  function signaturePad(sfx) {
+    if (!$('#pad' + sfx)) return;
+    const c = $('#pad' + sfx), ctx = c.getContext('2d');
     let drawing = false, last = null, empty = true;
     const pos = (e) => { const r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * c.width / r.width, y: (e.clientY - r.top) * c.height / r.height }; };
-    const setEmpty = (v) => { empty = v; $('#padhint').hidden = !v; };
+    const setEmpty = (v) => { empty = v; $('#padhint' + sfx).hidden = !v; };
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#000'; ctx.lineWidth = 5;
     c.onpointerdown = (e) => { drawing = true; last = pos(e); c.setPointerCapture(e.pointerId); setEmpty(false); ctx.beginPath(); ctx.arc(last.x, last.y, 2.2, 0, 7); ctx.fillStyle = ctx.strokeStyle; ctx.fill(); };
     c.onpointermove = (e) => {
@@ -1173,8 +1214,8 @@
       last = p;
     };
     c.onpointerup = c.onpointercancel = () => { drawing = false; };
-    $('#sigclear').onclick = () => { ctx.clearRect(0, 0, c.width, c.height); setEmpty(true); };
-    $('#sigfile').onchange = (e) => {
+    $('#sigclear' + sfx).onclick = () => { ctx.clearRect(0, 0, c.width, c.height); setEmpty(true); };
+    $('#sigfile' + sfx).onchange = (e) => {
       const f = e.target.files[0]; if (!f) return;
       const img = new Image();
       img.onload = () => {
@@ -1202,17 +1243,17 @@
       img.src = URL.createObjectURL(f);
       e.target.value = '';
     };
-    $('#sigsave').onclick = async (e) => {
-      if (empty) return errBox($('#serr'), 'Bitte zuerst im Feld unterschreiben.');
+    $('#sigsave' + sfx).onclick = async (e) => {
+      if (empty) return errBox($('#serr' + sfx), 'Bitte zuerst im Feld unterschreiben.');
       const png = trimmed(c);
-      if (!png) return errBox($('#serr'), 'Keine Unterschrift erkannt.');
+      if (!png) return errBox($('#serr' + sfx), 'Keine Unterschrift erkannt.');
       await busy(e.target, async () => {
         try {
-          S.user = (await api('POST', '/api/me/signature', { png })).user;
-          $('#cursig').innerHTML = `<p>Aktuell hinterlegt:</p><img class="sigimg" src="/api/me/signature?t=${Date.now()}" alt="Unterschrift">`;
-          ctx.clearRect(0, 0, c.width, c.height); setEmpty(true); errBox($('#serr'), 'Unterschrift gespeichert.', 'ok');
-          if (layoutEditor.reload) layoutEditor.reload();
-        } catch (x) { errBox($('#serr'), x.message); }
+          S.user = (await api('POST', '/api/me/signature', { png, who: sfx ? 'v' : '' })).user;
+          $('#cursig' + sfx).innerHTML = curSigHtml(sfx);
+          ctx.clearRect(0, 0, c.width, c.height); setEmpty(true); errBox($('#serr' + sfx), 'Unterschrift gespeichert.', 'ok');
+          if (layoutEditor.reload && layoutEditor.reload[sfx]) layoutEditor.reload[sfx]();
+        } catch (x) { errBox($('#serr' + sfx), x.message); }
       });
     };
   }

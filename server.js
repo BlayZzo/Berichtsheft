@@ -15,7 +15,7 @@ const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.12.0';
+const VERSION = '3.13.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -221,7 +221,8 @@ function publicUser(u) {
     beruf: u.beruf || '', lehrjahr: u.lehrjahr || '',
     genau: u.genau !== false, theme: u.theme || 'auto', speicher: speicherInfo(u),
     bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
-    hasSignature: !!u.sig, sigLayout: cleanLayout(u.sigLayout), woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
+    hasSignature: !!u.sig, sigLayout: cleanLayout(u.sigLayout),
+    vertreterAn: !!u.vertreterAn, hasSignatureV: !!u.sigV, sigLayoutV: cleanLayout(u.sigLayoutV), woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
     tutorialDone: !!u.tutorialDone, active: u.active
   };
 }
@@ -240,14 +241,14 @@ function sigSize(id) {
 }
 function usageOf(u) {
   let bytes = Buffer.byteLength(JSON.stringify({ o: u.orte, b: u.bausteine, w: u.woerterbuch }));
-  const sigs = new Set([u.sig]);
+  const sigs = new Set([u.sig, u.sigV]);
   for (const r of Object.values(db.reports)) {
     if (r.userId !== u.id) continue;
     bytes += Buffer.byteLength(JSON.stringify(r));
-    sigs.add(r.sig);
-    for (const h of r.history || []) sigs.add(h.sig);
+    sigs.add(r.sig); sigs.add(r.sigV);
+    for (const h of r.history || []) { sigs.add(h.sig); sigs.add(h.sigV); }
   }
-  for (const s of sigs) bytes += sigSize(s);
+  for (const s of sigs) if (s) bytes += sigSize(s);
   return bytes;
 }
 const quotaOf = (u) => (u.speicherMB ? Number(u.speicherMB) : Number(db.settings.speicherMB) || 20) * MB;
@@ -298,7 +299,7 @@ function asciiName(name) {
   return name.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss').replace(/[^\x20-\x7e]/g, '_');
 }
 function contentHash(r) {
-  const c = JSON.stringify({ k: r.kopf, d: r.days, b: r.bereich, n: r.nr, j: r.ausbildungsjahr, s: r.signedAt, t: r.sigDate, g: r.sig });
+  const c = JSON.stringify({ k: r.kopf, d: r.days, b: r.bereich, n: r.nr, j: r.ausbildungsjahr, s: r.signedAt, t: r.sigDate, g: r.sig, gv: r.sigV });
   return crypto.createHash('sha256').update(c).digest('hex');
 }
 
@@ -348,7 +349,9 @@ function buildPdf(r, { blank = false, preview = null } = {}) {
     sigDate: done ? W.de(r.sigDate) : preview ? W.de(preview.date) : '',
     signature: done ? loadSignature(r.sig) : preview ? loadSignature(preview.sig) : null,
     seed: r.id + (r.signedAt || preview && preview.date), footer,
-    layout: done && r.sigLayout ? r.sigLayout : (db.users[r.userId] || {}).sigLayout
+    layout: done && r.sigLayout ? r.sigLayout : (db.users[r.userId] || {}).sigLayout,
+    vertreter: done ? (r.sigV ? { date: W.de(r.sigDate), signature: loadSignature(r.sigV), layout: r.sigLayoutV } : null)
+      : preview && preview.sigV ? { date: W.de(preview.date), signature: loadSignature(preview.sigV), layout: preview.layoutV } : null
   });
   return { pdf, name: fileName(r) };
 }
@@ -605,6 +608,8 @@ route('POST', '/api/me', 'user', (ctx) => {
   if ('genau' in b) u.genau = !!b.genau;
   if ('theme' in b && ['auto', 'light', 'dark'].includes(b.theme)) u.theme = b.theme;
   if ('sigLayout' in b) u.sigLayout = cleanLayout(b.sigLayout);
+  if ('sigLayoutV' in b) u.sigLayoutV = cleanLayout(b.sigLayoutV);
+  if ('vertreterAn' in b) u.vertreterAn = !!b.vertreterAn;
   if (b.datenschutzOk === true || b.datenschutzOk === 'on') u.datenschutzAm = new Date().toISOString();
   if ('lehrjahr' in b) u.lehrjahr = Math.round(num(b.lehrjahr, 1, 4, 1));
   if ('bereich' in b) u.bereich = str(b.bereich, 40);
@@ -621,18 +626,21 @@ route('POST', '/api/me', 'user', (ctx) => {
   return { user: publicUser(u), missing: profileMissing(u) };
 });
 
+/* Zwei getrennte Unterschriften: eigene (sig) und gesetzliche/r Vertreter/in (sigV, ?who=v) */
+const sigKey = (who) => (who === 'v' ? 'sigV' : 'sig');
 route('POST', '/api/me/signature', 'azubi', (ctx) => {
-  const u = ctx.user;
-  if (ctx.body.png === null) { u.sig = ''; save(); return { user: publicUser(u) }; }
-  const old = u.sig;
+  const u = ctx.user, key = sigKey(ctx.body.who);
+  if (ctx.body.png === null) { u[key] = ''; if (key === 'sigV') u.vertreterAn = false; save(); return { user: publicUser(u) }; }
+  const old = u[key];
   let id;
   try { id = saveSignature(ctx.body.png); } catch (e) { fail(400, e.message); }
-  mitSpeicher(u, () => { u.sig = id; }, () => { u.sig = old; });
+  mitSpeicher(u, () => { u[key] = id; }, () => { u[key] = old; });
   save();
   return { user: publicUser(u) };
 });
 route('GET', '/api/me/signature', 'azubi', (ctx) => {
-  const file = ctx.user.sig && path.join(SIG_DIR, ctx.user.sig + '.png');
+  const id = ctx.user[sigKey(ctx.query.get('who'))];
+  const file = id && path.join(SIG_DIR, id + '.png');
   if (!file || !fs.existsSync(file)) fail(404, 'Keine Unterschrift hinterlegt.');
   /* Immer in Schwarz anzeigen, so wie sie auch im PDF erscheint */
   const img = decodePng(fs.readFileSync(file));
@@ -747,6 +755,7 @@ route('POST', '/api/report/finish', 'azubi', (ctx) => {
   const u = ctx.user, r = findReport(ctx, ctx.body.id);
   if (r.status === 'abgeschlossen') fail(409, 'Der Bericht ist schon unterschrieben.');
   if (!u.sig || !loadSignature(u.sig)) fail(400, 'Bitte zuerst in den Einstellungen deine Unterschrift hinterlegen.');
+  if (u.vertreterAn && (!u.sigV || !loadSignature(u.sigV))) fail(400, 'Bitte in den Einstellungen die Unterschrift der/des gesetzlichen Vertreter/in hinterlegen oder das Häkchen dort entfernen.');
   const date = str(ctx.body.date, 10) || heute();
   if (!W.isDate(date)) fail(400, 'Bitte ein gültiges Datum für die Unterschrift wählen.');
   if (date > heute()) fail(400, 'Das Datum der Unterschrift darf nicht in der Zukunft liegen.');
@@ -763,6 +772,8 @@ route('POST', '/api/report/finish', 'azubi', (ctx) => {
   r.kopf = { vorname: u.vorname, nachname: u.nachname };
   r.sig = u.sig;
   r.sigLayout = cleanLayout(u.sigLayout); /* Groesse/Lage beim Unterschreiben festhalten */
+  if (u.vertreterAn && u.sigV && loadSignature(u.sigV)) { r.sigV = u.sigV; r.sigLayoutV = cleanLayout(u.sigLayoutV); }
+  else { delete r.sigV; delete r.sigLayoutV; }
   r.hash = contentHash(r);
   saveNow();
   return { report: reportView(r) };
@@ -774,7 +785,7 @@ route('POST', '/api/report/reopen', 'azubi', (ctx) => {
   if (r.status !== 'abgeschlossen') fail(400, 'Der Bericht ist nicht unterschrieben.');
   if (!canEdit(r)) fail(403, 'Die Frist zum Bearbeiten ist abgelaufen. Der Admin kann sie verlängern.');
   r.history ||= [];
-  r.history.push({ days: r.days, nr: r.nr, bereich: r.bereich, signedAt: r.signedAt, sigDate: r.sigDate, hash: r.hash, kopf: r.kopf, sig: r.sig });
+  r.history.push({ days: r.days, nr: r.nr, bereich: r.bereich, signedAt: r.signedAt, sigDate: r.sigDate, hash: r.hash, kopf: r.kopf, sig: r.sig, sigV: r.sigV });
   if (r.history.length > 20) r.history.shift();
   r.status = 'entwurf';
   save();
@@ -797,7 +808,7 @@ route('GET', '/api/pdf', 'azubi', (ctx) => {
   let preview = null;
   if (r.status !== 'abgeschlossen' && ctx.query.get('preview') === '1') {
     const d = str(ctx.query.get('date'), 10);
-    preview = { date: W.isDate(d) ? d : heute(), sig: ctx.user.sig };
+    preview = { date: W.isDate(d) ? d : heute(), sig: ctx.user.sig, sigV: ctx.user.vertreterAn ? ctx.user.sigV : '', layoutV: ctx.user.sigLayoutV };
   }
   const { pdf, name } = buildPdf(r, { preview });
   const disp = ctx.query.get('view') === '1' ? 'inline' : 'attachment';
@@ -885,13 +896,13 @@ route('POST', '/api/admin/delete', 'admin', (ctx) => {
   if (!u) fail(404, 'Unbekanntes Konto.');
   if (u.id === ctx.user.id) fail(400, 'Du kannst dein eigenes Admin-Konto nicht löschen.');
   if (str(ctx.body.confirm, 40).toLowerCase() !== u.username) fail(400, 'Zur Bestätigung bitte den Benutzernamen genau eintippen.');
-  const sigs = new Set([u.sig]);
-  for (const r of ownReports(u.id)) { sigs.add(r.sig); for (const h of r.history || []) sigs.add(h.sig); delete db.reports[r.id]; }
+  const sigs = new Set([u.sig, u.sigV]);
+  for (const r of ownReports(u.id)) { sigs.add(r.sig); sigs.add(r.sigV); for (const h of r.history || []) { sigs.add(h.sig); sigs.add(h.sigV); } delete db.reports[r.id]; }
   endSessions(u.id);
   delete db.users[u.id];
   /* Unterschriften loeschen, die sonst niemand mehr braucht */
-  const used = new Set(Object.values(db.users).map((x) => x.sig));
-  for (const r of Object.values(db.reports)) { used.add(r.sig); for (const h of r.history || []) used.add(h.sig); }
+  const used = new Set(Object.values(db.users).flatMap((x) => [x.sig, x.sigV]));
+  for (const r of Object.values(db.reports)) { used.add(r.sig); used.add(r.sigV); for (const h of r.history || []) { used.add(h.sig); used.add(h.sigV); } }
   for (const s of sigs) if (s && !used.has(s)) { try { fs.unlinkSync(path.join(SIG_DIR, s + '.png')); } catch {} sigSizes.delete(s); }
   saveNow();
   return { ok: true };
