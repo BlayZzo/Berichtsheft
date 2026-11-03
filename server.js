@@ -11,11 +11,12 @@ const path = require('path');
 const crypto = require('crypto');
 const W = require('./lib/weeks');
 const { fill, fitDay, cleanLayout } = require('./lib/fill');
+const { liesBericht } = require('./lib/import');
 const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.14.0';
+const VERSION = '4.0.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -222,6 +223,7 @@ function publicUser(u) {
     genau: u.genau !== false, theme: u.theme || 'auto', speicher: speicherInfo(u),
     bereich: u.bereich || '', schultage: u.schultage || [], stunden: u.stunden ?? 7.6, schulstunden: u.schulstunden ?? 7.6,
     hasSignature: !!u.sig, sigLayout: cleanLayout(u.sigLayout),
+    dateiname: u.dateiname || '', dateinameStandard: db.settings.dateiname || DEFAULT_SETTINGS.dateiname,
     vertreterAn: !!u.vertreterAn, hasSignatureV: !!u.sigV, sigLayoutV: cleanLayout(u.sigLayoutV), woerterbuch: u.woerterbuch || [], orte: u.orte || [], bausteine: u.bausteine || [],
     tutorialDone: !!u.tutorialDone, active: u.active
   };
@@ -291,8 +293,9 @@ function fileName(r) {
     kw: String(iso.week).padStart(2, '0'), jahr: String(iso.year), von: W.de(r.weekStart), bis: W.de(lastDay(r)),
     ajahr: String(r.ausbildungsjahr || ''), bereich: r.bereich || ''
   };
-  let name = (db.settings.dateiname || DEFAULT_SETTINGS.dateiname).replace(/\{(\w+)\}/g, (m, key) => vars[key] ?? m);
-  name = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, '_').slice(0, 150) || 'Bericht';
+  const owner = db.users[r.userId] || {};
+  let name = (owner.dateiname || db.settings.dateiname || DEFAULT_SETTINGS.dateiname).replace(/\{(\w+)\}/g, (m, key) => vars[key] ?? m);
+  name = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 150) || 'Bericht';
   return name + '.pdf';
 }
 function asciiName(name) {
@@ -365,6 +368,7 @@ function reportView(r) {
     id: r.id, nr: r.nr, weekStart: r.weekStart, bis: lastDay(r), bereich: r.bereich, ausbildungsjahr: r.ausbildungsjahr, days: r.days,
     status: r.status, sigDate: r.sigDate, signedAt: r.signedAt, firstSignedAt: r.firstSignedAt, korrigiertAm: r.korrigiertAm,
     deadline: deadlineOf(r), editable: canEdit(r), file: fileName(r), updated: r.updated, kw: iso.week, jahr: iso.year,
+    abgegebenAm: r.abgegebenAm || null, importiert: r.importiert || null,
     holidays: r.days.map((d) => W.holidayName(d.date, db.settings.bundesland)),
     fits: fitsOf(r).map((f) => (f ? { fits: f.fits, over: f.over || 0 } : null))
   };
@@ -373,6 +377,7 @@ function listItem(r) {
   return {
     id: r.id, nr: r.nr, weekStart: r.weekStart, bis: lastDay(r), bereich: r.bereich, status: r.status, signedAt: r.signedAt,
     updated: r.updated, deadline: deadlineOf(r), editable: canEdit(r), file: fileName(r), kw: W.isoWeek(r.weekStart).week,
+    jahr: W.isoWeek(r.weekStart).year, abgegebenAm: r.abgegebenAm || null, importiert: !!r.importiert,
     filled: r.days.filter((d) => d.text.trim()).length, total: r.days.length
   };
 }
@@ -537,7 +542,7 @@ function cleanBausteine(list) {
 
 /* Routen. Recht: null = offen, 'user' = angemeldet, 'azubi' = eigenes Berichtsheft, 'admin' */
 const routes = [];
-const route = (m, p, auth, fn) => routes.push({ m, p, auth, fn });
+const route = (m, p, auth, fn, opts = {}) => routes.push({ m, p, auth, fn, ...opts });
 
 route('GET', '/api/health', null, (ctx) => (ctx.user || ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ctx.req.socket.remoteAddress) && !ctx.req.headers['x-forwarded-for'] ? { ok: true, version: VERSION } : { ok: true }));
 
@@ -613,6 +618,11 @@ route('POST', '/api/me', 'user', (ctx) => {
   if ('sigLayout' in b) u.sigLayout = cleanLayout(b.sigLayout);
   if ('sigLayoutV' in b) u.sigLayoutV = cleanLayout(b.sigLayoutV);
   if ('vertreterAn' in b) u.vertreterAn = !!b.vertreterAn;
+  if ('dateiname' in b) {
+    const d = str(b.dateiname, 120).trim();
+    if (d && !/\{nr\d?\}/.test(d)) fail(400, 'Im Dateinamen muss {nr} vorkommen, sonst haben alle PDFs denselben Namen.');
+    if (d) u.dateiname = d; else delete u.dateiname;
+  }
   if (b.datenschutzOk === true || b.datenschutzOk === 'on') u.datenschutzAm = new Date().toISOString();
   if ('lehrjahr' in b) u.lehrjahr = Math.round(num(b.lehrjahr, 1, 4, 1));
   if ('bereich' in b) u.bereich = str(b.bereich, 40);
@@ -716,8 +726,61 @@ route('POST', '/api/report/new', 'azubi', (ctx) => {
   return { id };
 });
 
+/* Alte Berichte als fertige PDF hochladen: Text wird ausgelesen und als Entwurf angelegt */
+route('POST', '/api/report/import', 'azubi', async (ctx) => {
+  gesperrt('neu');
+  const u = ctx.user, b = ctx.body;
+  const datei = str(b.name, 160) || 'Bericht.pdf';
+  const m = /^data:application\/(?:pdf|octet-stream);base64,([A-Za-z0-9+/=]+)$/.exec(String(b.pdf || '')) || /^([A-Za-z0-9+/=]+)$/.exec(String(b.pdf || ''));
+  if (!m) fail(400, 'Bitte eine PDF-Datei auswählen.');
+  const buf = Buffer.from(m[1], 'base64');
+  if (buf.length > 10 * MB) fail(413, 'Die PDF ist zu groß (höchstens 10 MB).');
+  let x;
+  try { x = await liesBericht(buf, datei); } catch (e) { fail(400, e.message); }
+  if (!x.vom) fail(400, 'In der PDF wurde kein Datum bei „Ausbildungswoche vom“ gefunden. Ist es das Formular der Handelskammer?');
+  const ws = W.mondayOf(x.vom);
+  const dup = ownReports(u.id).find((r) => r.weekStart === ws);
+  if (dup) fail(409, `Für die Woche ab ${W.de(ws)} gibt es schon Bericht Nr. ${dup.nr}.`);
+  const eigene = ownReports(u.id).map((r) => r.nr);
+  let nr = Number(b.nr) || x.nr;
+  if (!nr || nr < 1 || nr > 9999) nr = (eigene.length ? Math.max(...eigene) : 0) + 1;
+  const bereich = str(x.bereich, 40);
+  const auto = schoolWeek(W.buildWeek(u, db.settings, ws).days, bereich);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const date = W.addDays(ws, i), t = x.tage[i] || { text: '', hours: null }, a = auto.find((d) => d.date === date);
+    if (i >= 5 && !t.text) continue; /* Wochenende nur, wenn dort etwas steht */
+    const type = a && !t.text ? a.type : a && a.type === 'schule' ? 'schule' : 'betrieb';
+    days.push({ date, type, hours: t.hours ?? (t.text ? (a ? a.hours : Number(u.stunden) || 7.6) : 0), text: text(t.text) });
+  }
+  const warnung = x.name && u.nachname && !x.name.toLowerCase().includes(u.nachname.toLowerCase()) ? `Im PDF steht der Name „${x.name}“.` : '';
+  const id = crypto.randomBytes(9).toString('base64url');
+  const now = new Date().toISOString();
+  mitSpeicher(u, () => {
+    db.reports[id] = {
+      id, userId: u.id, weekStart: ws, nr, bereich, ausbildungsjahr: x.ausbildungsjahr || Number(u.lehrjahr) || 1, days, status: 'entwurf',
+      created: now, updated: now, history: [], importiert: { datei, am: now },
+      ...(b.abgegeben ? { abgegebenAm: heute() } : {})
+    };
+  }, () => { delete db.reports[id]; });
+  saveNow();
+  return { id, nr, weekStart: ws, filled: days.filter((d) => d.text).length, warnung, nrDoppelt: eigene.includes(nr) };
+}, { limit: 15e6 });
+
+/* Status "abgegeben" (an Ausbilder/Betrieb), unabhaengig von der Unterschrift */
+route('POST', '/api/report/abgabe', 'azubi', (ctx) => {
+  const r = findReport(ctx, ctx.body.id);
+  if (ctx.body.abgegeben) {
+    const d = str(ctx.body.datum, 10);
+    r.abgegebenAm = W.isDate(d) && d <= heute() ? d : heute();
+  } else delete r.abgegebenAm;
+  r.updated = new Date().toISOString();
+  save();
+  return { report: reportView(r) };
+});
+
 route('GET', '/api/reports', 'azubi', (ctx) => ({
-  reports: ownReports(ctx.user.id).sort((a, b) => b.weekStart.localeCompare(a.weekStart)).map(listItem)
+  reports: ownReports(ctx.user.id).sort((a, b) => a.nr - b.nr || a.weekStart.localeCompare(b.weekStart)).map(listItem)
 }));
 
 route('GET', '/api/report', 'azubi', (ctx) => ({ report: reportView(findReport(ctx, ctx.query.get('id'))) }));
@@ -958,7 +1021,7 @@ async function handle(req, res) {
     if (user && r.auth && user.role !== 'admin' && db.settings.gesperrt && db.settings.gesperrt.login) fail(503, `${FUNKTIONEN.login}: ${db.settings.sperrText}`);
     if (user && user.mustChange && r.auth && pathname !== '/api/password') fail(403, 'Bitte zuerst ein eigenes Passwort festlegen.');
     if (user && r.auth === 'azubi' && profileMissing(user).length && !['/api/report/next', '/api/reports'].includes(pathname)) fail(403, 'Bitte zuerst deine Angaben vervollständigen.');
-    const body = req.method === 'POST' ? await readBody(req) : {};
+    const body = req.method === 'POST' ? await readBody(req, r.limit) : {};
     const out = await r.fn({ req, res, user, body: body && typeof body === 'object' ? body : {}, query: url.searchParams, ip: clientIp(req) });
     if (out && out.raw) return send(res, 200, out.raw, out.type, out.headers || {});
     send(res, 200, out || { ok: true });

@@ -357,6 +357,7 @@
       ${S.user && !isAdmin() ? '<div class="actions"><button class="primary" id="tourbtn">Einführung noch einmal ansehen</button></div><div class="mt"></div>' : ''}
       ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Name, Firma, Lehrberuf, Lehrjahr und das Jahr, in dem die Ausbildung endet, eintragen.</li></ol>', true)}
       ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen. Darunter stellst du mit Reglern ein, wie groß Unterschrift und Datum im PDF sind und wo die Unterschrift sitzt.</li><li><strong>Einstellungen → Unterschrift gesetzliche/r Vertreter/in:</strong> Häkchen setzen, dann ausklappen, unterschreiben lassen und Größe einstellen. Sie wird mit demselben Datum unten links eingesetzt.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
+      ${q('Alte Berichte, Status und Dateiname', '<ul><li><strong>Alte Berichte hochladen:</strong> Auf der Startseite „Alte Berichte hochladen (PDF)“. Fertige PDFs auf dem Formular der Handelskammer werden eingelesen (Woche, Lehrjahr, Bereich, Texte, Stunden, Nummer aus dem Dateinamen) und landen „In Bearbeitung“. Kurz prüfen, ergänzen, unterschreiben.</li><li><strong>Reiter:</strong> In Bearbeitung, Fertig (unterschrieben), Abgegeben und Alle, jeweils nach Nummer sortiert.</li><li><strong>Abgegeben:</strong> Im Bericht „Als abgegeben markieren“ mit Datum; lässt sich zurücknehmen.</li><li><strong>Dateiname:</strong> In den Einstellungen änderbar, z. B. <em>Berichtsheft {nachname} NR.{nr}</em>.</li></ul>')}
       ${q('Neuen Wochenbericht anlegen', '<ol><li>Auf der Startseite <strong>Neuer Wochenbericht</strong> tippen.</li><li><strong>Diese Woche</strong> oder <strong>Nächste Woche</strong> wählen, oder ein beliebiges Datum. Die Woche wird automatisch auf Montag bis Sonntag gesetzt.</li><li>Die Nummer zählt von selbst weiter. Nur ändern, wenn sie nicht stimmt.</li><li>Ausbildungsbereich wählen, z. B. AW, BBS oder Betrieb.</li></ol>')}
       ${q('Tage ausfüllen', '<ul><li>Alles wird beim Schreiben gespeichert. Du kannst den Bericht jederzeit schließen und später weitermachen, auch auf einem anderen Gerät.</li><li><strong>Einfügen:</strong> setzt einen Arbeitsort oder Textbaustein an der Stelle ein, wo der Cursor steht.</li><li><strong>Markiertes merken:</strong> Text im Feld markieren und tippen. Er wird ein Textbaustein für später.</li><li><strong>Ideen:</strong> Vorschläge aus deinen früheren Berichten und den anderen Tagen der Woche. Einfügen oder kopieren, danach selbst anpassen.</li><li><strong>Rückgängig:</strong> macht das letzte Einfügen, die letzte Idee oder Korrektur wieder rückgängig.</li><li>Über das kleine Auswahlfeld beim Tag stellst du Urlaub, Krank, Feiertag oder Berufsschule ein.</li></ul>')}
       ${q('Rechtschreibung', '<ul><li>Wird beim Schreiben automatisch geprüft. Fehler sind direkt im Text farbig unterstrichen: <span class="dot a-rs"></span>Rechtschreibung, <span class="dot a-gr"></span>Grammatik, <span class="dot a-zs"></span>Zeichensetzung, <span class="dot a-st"></span>Stil.</li><li>Markiertes Wort antippen: grüner Knopf = Vorschlag übernehmen, „So lassen“ = Hinweis ausblenden.</li><li>„Alle Rechtschreibfehler korrigieren“ übernimmt jeweils den ersten Vorschlag. Mit „Rückgängig“ nimmst du es zurück.</li><li>Fachwörter mit „Ins Wörterbuch“ speichern.</li><li>In den Einstellungen kannst du die <strong>genaue Prüfung</strong> einschalten (auch Stil und Füllwörter).</li></ul>')}
@@ -372,14 +373,24 @@
 
   /* ---------- Startseite ---------- */
   function statusChip(r) {
-    if (r.status === 'abgeschlossen') return r.editable ? '<span class="chip ok">Fertig</span>' : '<span class="chip">Archiviert</span>';
+    if (r.abgegebenAm) return '<span class="chip abg">Abgegeben</span>';
+    if (r.status === 'abgeschlossen') return '<span class="chip ok">Fertig</span>';
     return '<span class="chip warn">In Bearbeitung</span>';
   }
+  /* Reiter auf der Startseite; alle nach Nummer sortiert (chronologisch) */
+  const REITER = [
+    ['bearbeitung', 'In Bearbeitung', (r) => r.status !== 'abgeschlossen' && !r.abgegebenAm],
+    ['fertig', 'Fertig', (r) => r.status === 'abgeschlossen' && !r.abgegebenAm],
+    ['abgegeben', 'Abgegeben', (r) => !!r.abgegebenAm],
+    ['alle', 'Alle', () => true],
+  ];
+  const merk = { get: (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
   async function viewHome() {
     app.innerHTML = '<p class="loading">Lädt …</p>';
     let reports, next;
     try { let st; [{ reports }, next, st] = await Promise.all([api('GET', '/api/reports'), api('GET', '/api/report/next'), api('GET', '/api/state')]); S = { ...S, ...st }; }
     catch (x) { app.innerHTML = `<div class="msg err">${esc(x.message)}</div>`; return; }
+    reports.sort((a, b) => a.nr - b.nr || a.weekStart.localeCompare(b.weekStart));
     const sperren = Object.keys(S.settings.funktionen).filter(locked);
     let html = `<p class="hello"><strong>Hallo ${esc(S.user.vorname)}!</strong> <span class="muted">${esc(S.user.firma)}</span></p>`;
     if (sperren.length) html += `<div class="msg warn">Gerade gesperrt: ${sperren.map((k) => esc(S.settings.funktionen[k])).join(', ')}. ${esc(S.settings.sperrText)}</div>`;
@@ -387,31 +398,60 @@
     if (sp && sp.prozent >= 90) html += `<div class="msg ${sp.prozent >= 100 ? 'err' : 'warn'}">Dein Speicherplatz ist ${sp.prozent >= 100 ? 'voll' : 'fast voll'} (${mb(sp.used)} von ${mb(sp.quota)} MB). Bitte beim Admin mehr Speicher anfragen.</div>`;
     if (!next.hasSignature) html += `<div class="msg info">✍ Noch keine Unterschrift hinterlegt. Das geht in den <a href="#/einstellungen">Einstellungen</a>.</div>`;
     html += `<button class="primary big" id="newbtn" ${locked('neu') ? 'disabled' : ''}><span class="plus">+</span> Neuer Wochenbericht</button>
+      <button class="importbtn" id="impbtn" ${locked('neu') ? 'disabled' : ''}>⇪ Alte Berichte hochladen (PDF)</button>
       <h2 class="mt2">Meine Berichte</h2>`;
-    const item = (r) => `<a class="item link" href="#/bericht/${esc(r.id)}">
-        <div class="nr">${r.nr}</div>
-        <div class="main"><strong>KW ${r.kw} · ${deShort(r.weekStart)} – ${de(r.bis)}</strong>
-        <span class="muted">${esc(r.bereich || '–')}${r.status === 'abgeschlossen' ? ' · unterschrieben ' + deDate(r.signedAt) : ` · ${r.filled} von ${r.total} Tagen ausgefüllt`}</span>
-        ${r.status === 'abgeschlossen' ? '' : `<div class="progress"><span data-p="${Math.round(100 * r.filled / Math.max(1, r.total))}"></span></div>`}</div></a>`;
-    /* Gestaffelt: In Bearbeitung, Fertig (unterschrieben, noch aenderbar), Archiviert (Frist abgelaufen) */
-    const gruppen = [
-      ['In Bearbeitung', reports.filter((r) => r.status !== 'abgeschlossen'), ''],
-      ['Fertig', reports.filter((r) => r.status === 'abgeschlossen' && r.editable), `Unterschrieben, noch ${S.settings.bearbeitbarTage} Tage nach dem Unterschreiben änderbar`],
-      ['Archiviert', reports.filter((r) => r.status === 'abgeschlossen' && !r.editable), 'Bearbeitungsfrist abgelaufen, nur noch ansehen und herunterladen'],
-    ];
-    if (!reports.length) html += '<div class="card muted">Noch keine Berichte. Tippe oben auf „Neuer Wochenbericht“.</div>';
-    else for (const [titel, liste, info] of gruppen) {
-      if (!liste.length) continue;
-      const kopf = `<span>${titel}</span> <span class="count">${liste.length}</span>`;
-      const inhalt = `${info ? `<p class="muted small-t">${esc(info)}</p>` : ''}<div class="list">${liste.map(item).join('')}</div>`;
-      html += titel === 'Archiviert'
-        ? `<details class="gruppe"><summary class="ghead">${kopf}</summary>${inhalt}</details>`
-        : `<section class="gruppe"><h3 class="ghead">${kopf}</h3>${inhalt}</section>`;
-    }
+    let tab = merk.get('bh_reiter', 'bearbeitung');
+    if (!REITER.some(([k]) => k === tab)) tab = 'bearbeitung';
+    html += `<div class="tabs" role="tablist">${REITER.map(([k, t, f]) => `<button role="tab" data-tab="${k}" aria-selected="${k === tab}">${t} <span class="count">${reports.filter(f).length}</span></button>`).join('')}</div><div id="tablist"></div>`;
     app.innerHTML = html;
-    /* Fortschrittsbalken per Skript setzen (Inline-Styles sind aus Sicherheitsgruenden gesperrt) */
-    fillBars();
+    const item = (r, chip) => `<a class="item link" href="#/bericht/${esc(r.id)}">
+        <div class="nr">${r.nr}</div>
+        <div class="main"><strong>KW ${r.kw}/${String(r.jahr).slice(2)} · ${deShort(r.weekStart)} – ${de(r.bis)}</strong>
+        <span class="muted">${esc(r.bereich || '–')}${r.status === 'abgeschlossen' ? ' · unterschrieben ' + deDate(r.signedAt) : ` · ${r.filled} von ${r.total} Tagen ausgefüllt`}${r.abgegebenAm ? ' · abgegeben ' + de(r.abgegebenAm) : ''}${r.importiert ? ' · aus PDF' : ''}${r.status === 'abgeschlossen' && !r.editable ? ' · Frist abgelaufen' : ''}</span>
+        ${r.status === 'abgeschlossen' ? '' : `<div class="progress"><span data-p="${Math.round(100 * r.filled / Math.max(1, r.total))}"></span></div>`}</div>${chip ? statusChip(r) : ''}</a>`;
+    const leer = { bearbeitung: 'Nichts in Bearbeitung.', fertig: 'Keine fertigen (unterschriebenen) Berichte, die noch nicht abgegeben sind.', abgegeben: 'Noch nichts als abgegeben markiert. Das geht im Bericht mit „Als abgegeben markieren“.', alle: 'Noch keine Berichte. Tippe oben auf „Neuer Wochenbericht“ oder lade alte Berichte als PDF hoch.' };
+    const zeige = (k) => {
+      tab = k; merk.set('bh_reiter', k);
+      $$('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === k)));
+      const liste = reports.filter(REITER.find(([x]) => x === k)[2]);
+      $('#tablist').innerHTML = liste.length ? `<div class="list">${liste.map((r) => item(r, k === 'alle')).join('')}</div>` : `<div class="card muted">${leer[k]}</div>`;
+      fillBars();
+    };
+    $$('[data-tab]').forEach((b) => { b.onclick = () => zeige(b.dataset.tab); });
+    zeige(tab);
     const btn = $('#newbtn'); if (btn) btn.onclick = () => newReport(next);
+    $('#impbtn').onclick = () => importDialog();
+  }
+
+  /* Alte Berichte (fertige PDFs) hochladen */
+  async function importDialog() {
+    let files = [];
+    const res = await modal(`<form><h2>Alte Berichte hochladen</h2>
+      <p>Wähle eine oder mehrere fertige PDFs auf dem Formular der Handelskammer („Ausbildungsnachweis – täglich“). Woche, Ausbildungsjahr, Bereich, Texte und Stunden werden übernommen, die Nummer aus dem Dateinamen (z. B. <em>…NR7.pdf</em>).</p>
+      <p class="muted small-t">Danach ist jeder Bericht „In Bearbeitung“: kurz prüfen, ggf. ergänzen und unterschreiben. Leere Wochenenden bekommen automatisch die Striche. Die PDF selbst wird nicht gespeichert, nur der Text.</p>
+      <label class="btn nomargin">PDFs auswählen<input type="file" id="impfiles" accept="application/pdf,.pdf" multiple hidden></label>
+      <p class="muted small-t" id="impwahl">Noch keine Datei gewählt.</p>
+      <label class="inline"><input type="checkbox" name="abg"> Diese Berichte habe ich schon abgegeben</label>
+      <div class="actions"><button class="primary" data-m="form">Hochladen</button><button type="button" data-m="no">Abbrechen</button></div></form>`, (box) => {
+      $('#impfiles', box).onchange = (e) => { files = [...e.target.files]; $('#impwahl', box).textContent = files.map((f) => f.name).join(', ') || 'Noch keine Datei gewählt.'; };
+    });
+    if (!res || typeof res !== 'object') return;
+    if (!files.length) { toast('Bitte zuerst PDFs auswählen.'); return; }
+    const zeilen = [];
+    const zeigen = (fertig) => modal(`<h2>${fertig ? 'Fertig' : `Wird hochgeladen … (${zeilen.length} von ${files.length})`}</h2><ul class="implist">${zeilen.join('')}</ul>${fertig ? '<div class="actions"><button class="primary" data-m="ok">OK</button></div>' : ''}`);
+    zeigen(false);
+    files.sort((a, b) => a.name.localeCompare(b.name, 'de', { numeric: true }));
+    for (const f of files) {
+      try {
+        if (f.size > 10 * 1024 * 1024) throw new Error('größer als 10 MB');
+        const pdf = await new Promise((ok, err) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => err(new Error('Datei nicht lesbar')); fr.readAsDataURL(f); });
+        const r = await api('POST', '/api/report/import', { name: f.name, pdf: String(pdf).replace(/^data:[^;]*;/, 'data:application/pdf;'), abgegeben: !!res.abg });
+        zeilen.push(`<li class="ok">✓ <strong>${esc(f.name)}</strong> → Nr. ${r.nr}, Woche ab ${de(r.weekStart)}, ${r.filled} Tage mit Text${r.nrDoppelt ? ' <em>(Nummer gibt es schon, bitte im Bericht ändern)</em>' : ''}${r.warnung ? ` <em>(${esc(r.warnung)})</em>` : ''}</li>`);
+      } catch (x) { zeilen.push(`<li class="err">✗ <strong>${esc(f.name)}</strong>: ${esc(x.message)}</li>`); }
+      zeigen(false);
+    }
+    await zeigen(true);
+    viewHome();
   }
 
   async function exportAll(btn) {
@@ -492,6 +532,9 @@
     const r = R.rep, ed = editable(), u = S.user;
     let html = `<div class="toprow"><a href="#/" class="back">‹ Meine Berichte</a><span class="spacer"></span>${statusChip(r)}</div>`;
     html += lockNote('bearbeiten');
+    if (r.importiert && r.status !== 'abgeschlossen') html += `<div class="msg info">⇪ Aus der PDF <strong>${esc(r.importiert.datei)}</strong> übernommen. Bitte Texte und Nummer kurz prüfen, ggf. ergänzen und dann unterschreiben.</div>`;
+    html += `<div class="card abgabe"><span>${r.abgegebenAm ? `✓ <strong>Abgegeben</strong> am ${de(r.abgegebenAm)}` : '<span class="muted">Noch nicht abgegeben</span>'}</span><span class="spacer"></span>
+      <button class="small" data-act="abgabe">${r.abgegebenAm ? 'Zurücknehmen' : 'Als abgegeben markieren'}</button></div>`;
     if (r.status === 'abgeschlossen') {
       html += `<div class="card done"><p><strong>✓ Unterschrieben</strong> mit Datum ${de(r.sigDate)}${r.korrigiertAm ? ' (korrigiert)' : ''}</p>
         <p class="muted fname">${esc(r.file)}</p>${lockNote('pdf')}
@@ -669,6 +712,7 @@
         return window.open(`/api/pdf?id=${encodeURIComponent(R.rep.id)}&view=1&preview=1&date=${d}`, '_blank', 'noopener');
       }
       if (act === 'delete') return del();
+      if (act === 'abgabe') return abgabe(b);
       if (act === 'finish') return finish(b);
       if (act === 'fix') return applyFix(i, Number(b.dataset.m), b.dataset.v);
       if (act === 'ignore') { R.ignored.add(b.dataset.key); renderIssues(i); return; }
@@ -940,6 +984,27 @@
     if (ok !== 'yes') return;
     try { R.rep = (await api('POST', '/api/report/reopen', { id: R.rep.id })).report; drawReport(); } catch (x) { toast(x.message); }
   }
+  async function abgabe(btn) {
+    const r = R.rep;
+    if (r.abgegebenAm) {
+      const ok = await modal(`<h2>„Abgegeben“ zurücknehmen?</h2><p>Bericht Nr. ${r.nr} steht dann wieder unter „${r.status === 'abgeschlossen' ? 'Fertig' : 'In Bearbeitung'}“.</p><div class="actions"><button class="primary" data-m="yes">Zurücknehmen</button><button data-m="no">Abbrechen</button></div>`);
+      if (ok !== 'yes') return;
+    } else {
+      const res = await modal(`<form><h2>Als abgegeben markieren</h2>
+        ${r.status !== 'abgeschlossen' ? '<div class="msg warn">Dieser Bericht ist hier noch nicht unterschrieben.</div>' : ''}
+        <label for="abgd">Abgegeben am</label><input type="date" id="abgd" name="datum" value="${today()}" max="${today()}" required>
+        <div class="actions"><button class="primary" data-m="form">Speichern</button><button type="button" data-m="no">Abbrechen</button></div></form>`);
+      if (!res || typeof res !== 'object') return;
+      r._datum = res.datum;
+    }
+    await busy(btn, async () => {
+      try {
+        R.rep = (await api('POST', '/api/report/abgabe', { id: r.id, abgegeben: !r.abgegebenAm, datum: r._datum })).report;
+        drawReport(); toast(R.rep.abgegebenAm ? 'Als abgegeben markiert.' : 'Zurückgenommen.');
+      } catch (x) { toast(x.message); }
+    });
+  }
+
   async function del() {
     const r = R.rep;
     if (!r.firstSignedAt) {
@@ -1012,6 +1077,13 @@
           ${layHtml('V')}
         </div></div>
 
+      <div class="card" id="namecard"><h2>Dateiname der PDFs</h2>
+        <p class="muted">So heißen deine PDFs beim Speichern. <code>{nachname}</code> wird durch deinen Nachnamen ersetzt, <code>{nr}</code> durch die Nummer des Berichts.</p>
+        <label for="dname">Vorlage</label><input type="text" id="dname" maxlength="120" value="${esc(u.dateiname || u.dateinameStandard)}" spellcheck="false" autocapitalize="none">
+        <p class="small-t">Beispiel: <strong id="dbsp"></strong></p>
+        <p class="muted small-t">Weitere Platzhalter: <code>{vorname}</code> <code>{nr3}</code> (Nummer dreistellig, z. B. 007) <code>{kw}</code> <code>{jahr}</code> <code>{von}</code> <code>{bis}</code> <code>{bereich}</code> <code>{ajahr}</code>.</p>
+        <div class="actions"><button class="primary" id="dsave">Speichern</button><button id="dreset">Standard</button><span class="muted small-t" id="dstate"></span></div></div>
+
       <div class="card"><h2>Speicherort für PDFs</h2><div id="folder"></div></div>
 
       <div class="card"><h2>Rechtschreibprüfung</h2>
@@ -1041,7 +1113,7 @@
       catch (x) { errBox($('#perr'), x.message); }
     };
     bindPw(() => toast('Passwort geändert.'));
-    bindDict(); signaturePad(''); layoutEditor(''); signaturePad('V'); layoutEditor('V'); vertreterToggle(); folderCard(); orteEditor(); bausteineEditor(); fillBars();
+    bindDict(); signaturePad(''); layoutEditor(''); signaturePad('V'); layoutEditor('V'); vertreterToggle(); nameCard(); folderCard(); orteEditor(); bausteineEditor(); fillBars();
     $('#tour2').onclick = () => tutorial(true);
     $('#genau').onchange = async (e) => {
       try { S.user = (await api('POST', '/api/me', { genau: e.target.checked })).user; toast(e.target.checked ? 'Genaue Prüfung ist an.' : 'Normale Prüfung.'); } catch (x) { toast(x.message); }
@@ -1131,6 +1203,27 @@
         </div>
         <div class="actions"><button id="layreset${sfx}">Standard wiederherstellen</button><span class="muted small-t" id="laystate${sfx}"></span></div>`;
   }
+  /* Dateiname: Vorschau wie auf dem Server (fileName in server.js) */
+  function dateiBeispiel(muster) {
+    const u = S.user, n = 7;
+    const v = { vorname: u.vorname, nachname: u.nachname, nr: String(n), nr3: String(n).padStart(3, '0'), kw: '42', jahr: '2026', von: '12.10.2026', bis: '18.10.2026', bereich: 'AW', ajahr: String(u.lehrjahr || 1) };
+    const name = String(muster || '').replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m).replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 150) || 'Bericht';
+    return name + '.pdf';
+  }
+  function nameCard() {
+    const inp = $('#dname'); if (!inp) return;
+    const upd = () => { $('#dbsp').textContent = dateiBeispiel(inp.value); };
+    inp.oninput = upd; upd();
+    const store = async (wert, btn) => busy(btn, async () => {
+      try {
+        S.user = (await api('POST', '/api/me', { dateiname: wert })).user;
+        inp.value = S.user.dateiname || S.user.dateinameStandard; upd(); $('#dstate').textContent = '✓ Gespeichert';
+      } catch (x) { $('#dstate').textContent = x.message; }
+    });
+    $('#dsave').onclick = (e) => store(inp.value.trim() === S.user.dateinameStandard ? '' : inp.value, e.target);
+    $('#dreset').onclick = (e) => store('', e.target);
+  }
+
   function vertreterToggle() {
     const t = $('#vtog'); if (!t) return;
     t.onchange = async () => {
@@ -1446,7 +1539,7 @@
       <div id="gerr"></div><div class="actions"><button class="primary">Speichern</button></div></form></div>`;
     const ex = () => {
       const v = { vorname: 'Carlo', nachname: 'Witting', nr: '7', nr3: '007', kw: '42', jahr: '2026', von: '12.10.2026', bis: '18.10.2026', bereich: 'AW' };
-      $('#fnex').textContent = $('#fn').value.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m).replace(/\s+/g, '_') + '.pdf';
+      $('#fnex').textContent = $('#fn').value.replace(/\{(\w+)\}/g, (m, k) => v[k] ?? m).replace(/\s+/g, ' ').trim() + '.pdf';
     };
     $('#fn').oninput = ex; ex();
     $('#bf2').onsubmit = async (e) => {

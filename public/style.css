@@ -313,3 +313,21 @@ label.vtog { font-weight: 600; margin: .2rem 0 .3rem; }
 #vbody { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--line); }
 .sigrow.v { margin-top: .9rem; }
 .wkhint { margin: .15rem 0 0; }
+
+/* Startseite: Reiter, Hochladen, Abgabe */
+.importbtn { width: 100%; margin-top: .55rem; }
+.tabs[role=tablist] { margin: .2rem 0 .8rem; padding-bottom: .2rem; }
+.tabs button[aria-selected=true] { background: var(--brand); color: #fff; border-color: var(--brand); }
+.tabs button .count { display: inline-block; min-width: 1.4em; margin-left: .25rem; padding: 0 .4rem; border-radius: 99px; background: var(--soft); color: var(--muted); font-size: .78rem; font-weight: 700; }
+.tabs button[aria-selected=true] .count { background: rgba(255, 255, 255, .22); color: #fff; }
+.chip.abg { background: color-mix(in srgb, var(--brand-2) 15%, transparent); color: var(--brand-2); }
+.card.abgabe { display: flex; align-items: center; gap: .6rem; padding-top: .7rem; padding-bottom: .7rem; flex-wrap: wrap; }
+ul.implist { padding-left: 1.1rem; max-height: 55vh; overflow: auto; }
+ul.implist li { margin: .35rem 0; }
+ul.implist li.ok { color: var(--ok); }
+ul.implist li.err { color: var(--bad); }
+ul.implist em { color: var(--muted); font-style: normal; }
+#namecard code { font-size: .85em; background: var(--soft); padding: 0 .25rem; border-radius: 4px; }
+.tabs[role=tablist] { display: grid; grid-template-columns: repeat(4, 1fr); gap: .4rem; overflow: visible; }
+.tabs[role=tablist] button { padding-left: .5rem; padding-right: .5rem; justify-content: center; }
+@media (max-width: 560px) { .tabs[role=tablist] { grid-template-columns: 1fr 1fr; } }

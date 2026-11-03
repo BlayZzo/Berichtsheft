@@ -24,7 +24,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 say "0/6 Node.js und Caddy pruefen"
 apt-get update -y
-apt-get install -y curl ca-certificates gnupg git unzip debian-keyring debian-archive-keyring apt-transport-https
+apt-get install -y curl ca-certificates gnupg git unzip poppler-utils debian-keyring debian-archive-keyring apt-transport-https
 if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs

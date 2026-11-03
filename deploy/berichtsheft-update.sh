@@ -33,6 +33,9 @@ chmod 600 "$SNAP"
 
 git reset --quiet --hard "$NEW"
 chmod -R a+rX "$REPO"
+# Zusatzprogramme nachinstallieren (pdftotext zum Einlesen alter Berichte) und dieses Skript aktuell halten
+command -v pdftotext >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils >> "$LOG" 2>&1 || true
+install -m 750 "$REPO/deploy/berichtsheft-update.sh" /usr/local/sbin/berichtsheft-update 2>/dev/null || true
 systemctl restart berichtsheft
 
 for _ in $(seq 1 25); do
