@@ -331,3 +331,22 @@ ul.implist em { color: var(--muted); font-style: normal; }
 .tabs[role=tablist] { display: grid; grid-template-columns: repeat(4, 1fr); gap: .4rem; overflow: visible; }
 .tabs[role=tablist] button { padding-left: .5rem; padding-right: .5rem; justify-content: center; }
 @media (max-width: 560px) { .tabs[role=tablist] { grid-template-columns: 1fr 1fr; } }
+
+/* Mehrfachauswahl */
+.listhead { display: flex; align-items: center; gap: .6rem; }
+.listhead h2 { margin: 0; flex: 1; }
+.selhint { margin: .2rem 0 .5rem; }
+.selhint:empty { display: none; }
+a.item.link { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.item .selbox { display: none; flex: 0 0 auto; width: 1.4rem; height: 1.4rem; border: 2px solid var(--line); border-radius: 6px; background: var(--card); }
+body.selmode .item .selbox { display: inline-block; }
+body.selmode a.item.link { cursor: pointer; }
+a.item.sel { border-color: var(--brand-2); box-shadow: inset 0 0 0 1px var(--brand-2); background: color-mix(in srgb, var(--brand-2) 7%, var(--card)); }
+a.item.sel .selbox { background: var(--brand-2); border-color: var(--brand-2); position: relative; }
+a.item.sel .selbox::after { content: '✓'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: .9rem; font-weight: 800; }
+.selbar { position: fixed; z-index: 55; left: 50%; transform: translateX(-50%); bottom: 1rem; width: min(760px, calc(100vw - 2rem));
+  display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; padding: .65rem .8rem; border-radius: 14px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+.selbar .selcount { flex: 1 1 auto; white-space: nowrap; }
+body.selmode main { padding-bottom: 9rem !important; }
+@media (max-width: 720px) { .selbar { bottom: 4.6rem; width: calc(100vw - 1rem); } body.selmode .toast { bottom: 10.5rem; } }

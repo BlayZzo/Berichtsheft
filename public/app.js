@@ -120,30 +120,64 @@
   };
   const canPickFolder = () => 'showDirectoryPicker' in window;
 
-  async function savePdf(r) {
+  async function holePdf(r) {
     const res = await fetch('/api/pdf?id=' + encodeURIComponent(r.id), { credentials: 'same-origin' });
-    if (!res.ok) { let m = 'PDF konnte nicht erstellt werden.'; try { m = (await res.json()).error || m; } catch {} return toast(m); }
-    const blob = await res.blob(), name = r.file;
+    if (!res.ok) { let m = 'PDF konnte nicht erstellt werden.'; try { m = (await res.json()).error || m; } catch {} throw new Error(m); }
+    return { blob: await res.blob(), name: r.file };
+  }
+  async function ordnerZugriff() {
     const dir = canPickFolder() ? await IDB.get('dir') : null;
-    if (dir) {
-      try {
-        let p = await dir.queryPermission({ mode: 'readwrite' });
-        if (p !== 'granted') p = await dir.requestPermission({ mode: 'readwrite' });
-        if (p === 'granted') {
-          const fh = await dir.getFileHandle(name, { create: true });
-          const w = await fh.createWritable(); await w.write(blob); await w.close();
-          return toast(`Gespeichert in „${dir.name}“: ${name}`);
-        }
-      } catch (e) { console.warn(e); }
-    }
-    const file = new File([blob], name, { type: 'application/pdf' });
-    if (navigator.canShare && navigator.canShare({ files: [file] }) && matchMedia('(pointer: coarse)').matches) {
-      try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
-    }
+    if (!dir) return null;
+    try {
+      let p = await dir.queryPermission({ mode: 'readwrite' });
+      if (p !== 'granted') p = await dir.requestPermission({ mode: 'readwrite' });
+      return p === 'granted' ? dir : null;
+    } catch (e) { console.warn(e); return null; }
+  }
+  async function inOrdner(dir, { blob, name }) {
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable(); await w.write(blob); await w.close();
+  }
+  function herunterladen({ blob, name }) {
     const url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    toast('Heruntergeladen: ' + name);
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+  }
+  const istTouch = () => matchMedia('(pointer: coarse)').matches;
+
+  async function savePdf(r) {
+    let f;
+    try { f = await holePdf(r); } catch (x) { return toast(x.message); }
+    const dir = await ordnerZugriff();
+    if (dir) { try { await inOrdner(dir, f); return toast(`Gespeichert in „${dir.name}“: ${f.name}`); } catch (e) { console.warn(e); } }
+    const file = new File([f.blob], f.name, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && istTouch()) {
+      try { await navigator.share({ files: [file], title: f.name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    herunterladen(f);
+    toast('Heruntergeladen: ' + f.name);
+  }
+
+  /* Mehrere PDFs nacheinander: fester Ordner (PC) > Teilen-Menue mit allen Dateien (Handy) > einzeln herunterladen */
+  async function savePdfs(list) {
+    const files = [];
+    for (let i = 0; i < list.length; i++) {
+      toast(`PDF ${i + 1} von ${list.length} wird erstellt …`);
+      try { files.push(await holePdf(list[i])); } catch (x) { toast(`Nr. ${list[i].nr}: ${x.message}`); }
+    }
+    if (!files.length) return;
+    const dir = await ordnerZugriff();
+    if (dir) {
+      let ok = 0;
+      for (const f of files) { try { await inOrdner(dir, f); ok++; } catch (e) { console.warn(e); } }
+      if (ok === files.length) return toast(`${ok} PDFs gespeichert in „${dir.name}“.`);
+    }
+    const fl = files.map((f) => new File([f.blob], f.name, { type: 'application/pdf' }));
+    if (istTouch() && navigator.canShare && navigator.canShare({ files: fl })) {
+      try { await navigator.share({ files: fl, title: `${fl.length} Berichte` }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    for (let i = 0; i < files.length; i++) { herunterladen(files[i]); await new Promise((ok) => setTimeout(ok, 450)); }
+    toast(`${files.length} PDFs heruntergeladen.`);
   }
 
   /* ---------- Navigation ---------- */
@@ -171,7 +205,11 @@
     catch { app.innerHTML = '<div class="card narrow"><div class="msg err">Der Server ist gerade nicht erreichbar. Bitte später neu laden.</div></div>'; return; }
     render();
   }
-  window.addEventListener('hashchange', async () => { await flushSave(); render(); });
+  window.addEventListener('hashchange', async () => {
+    /* Mehrfachauswahl beim Verlassen der Startseite beenden */
+    const sb = $('#selbar'); if (sb) sb.remove(); document.body.classList.remove('selmode'); auswahlModus = false; auswahl.clear();
+    await flushSave(); render();
+  });
 
   function render() {
     app.oninput = app.onchange = app.onclick = app.onfocusout = null;
@@ -357,7 +395,7 @@
       ${S.user && !isAdmin() ? '<div class="actions"><button class="primary" id="tourbtn">Einführung noch einmal ansehen</button></div><div class="mt"></div>' : ''}
       ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Name, Firma, Lehrberuf, Lehrjahr und das Jahr, in dem die Ausbildung endet, eintragen.</li></ol>', true)}
       ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen. Darunter stellst du mit Reglern ein, wie groß Unterschrift und Datum im PDF sind und wo die Unterschrift sitzt.</li><li><strong>Einstellungen → Unterschrift gesetzliche/r Vertreter/in:</strong> Häkchen setzen, dann ausklappen, unterschreiben lassen und Größe einstellen. Sie wird mit demselben Datum unten links eingesetzt.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
-      ${q('Alte Berichte, Status und Dateiname', '<ul><li><strong>Alte Berichte hochladen:</strong> Auf der Startseite „Alte Berichte hochladen (PDF)“. Fertige PDFs auf dem Formular der Handelskammer werden eingelesen (Woche, Lehrjahr, Bereich, Texte, Stunden, Nummer aus dem Dateinamen) und landen „In Bearbeitung“. Kurz prüfen, ergänzen, unterschreiben.</li><li><strong>Reiter:</strong> In Bearbeitung, Fertig (unterschrieben), Abgegeben und Alle, jeweils nach Nummer sortiert.</li><li><strong>Abgegeben:</strong> Im Bericht „Als abgegeben markieren“ mit Datum; lässt sich zurücknehmen.</li><li><strong>Dateiname:</strong> In den Einstellungen änderbar, z. B. <em>Berichtsheft {nachname} NR.{nr}</em>.</li></ul>')}
+      ${q('Alte Berichte, Status und Dateiname', '<ul><li><strong>Alte Berichte hochladen:</strong> Auf der Startseite „Alte Berichte hochladen (PDF)“. Fertige PDFs auf dem Formular der Handelskammer werden eingelesen (Woche, Lehrjahr, Bereich, Texte, Stunden, Nummer aus dem Dateinamen) und landen „In Bearbeitung“. Kurz prüfen, ergänzen, unterschreiben.</li><li><strong>Reiter:</strong> In Bearbeitung, Fertig (unterschrieben), Abgegeben und Alle, jeweils nach Nummer sortiert.</li><li><strong>Abgegeben:</strong> Im Bericht „Als abgegeben markieren“ mit Datum; lässt sich zurücknehmen.</li><li><strong>Mehrere auswählen:</strong> Am Handy/Tablet einen Bericht lange gedrückt halten, am PC „Auswählen“ tippen. Dann weitere antippen und unten „PDFs speichern“ oder „Abgegeben“ wählen.</li><li><strong>Dateiname:</strong> In den Einstellungen änderbar, z. B. <em>Berichtsheft {nachname} NR.{nr}</em>.</li></ul>')}
       ${q('Neuen Wochenbericht anlegen', '<ol><li>Auf der Startseite <strong>Neuer Wochenbericht</strong> tippen.</li><li><strong>Diese Woche</strong> oder <strong>Nächste Woche</strong> wählen, oder ein beliebiges Datum. Die Woche wird automatisch auf Montag bis Sonntag gesetzt.</li><li>Die Nummer zählt von selbst weiter. Nur ändern, wenn sie nicht stimmt.</li><li>Ausbildungsbereich wählen, z. B. AW, BBS oder Betrieb.</li></ol>')}
       ${q('Tage ausfüllen', '<ul><li>Alles wird beim Schreiben gespeichert. Du kannst den Bericht jederzeit schließen und später weitermachen, auch auf einem anderen Gerät.</li><li><strong>Einfügen:</strong> setzt einen Arbeitsort oder Textbaustein an der Stelle ein, wo der Cursor steht.</li><li><strong>Markiertes merken:</strong> Text im Feld markieren und tippen. Er wird ein Textbaustein für später.</li><li><strong>Ideen:</strong> Vorschläge aus deinen früheren Berichten und den anderen Tagen der Woche. Einfügen oder kopieren, danach selbst anpassen.</li><li><strong>Rückgängig:</strong> macht das letzte Einfügen, die letzte Idee oder Korrektur wieder rückgängig.</li><li>Über das kleine Auswahlfeld beim Tag stellst du Urlaub, Krank, Feiertag oder Berufsschule ein.</li></ul>')}
       ${q('Rechtschreibung', '<ul><li>Wird beim Schreiben automatisch geprüft. Fehler sind direkt im Text farbig unterstrichen: <span class="dot a-rs"></span>Rechtschreibung, <span class="dot a-gr"></span>Grammatik, <span class="dot a-zs"></span>Zeichensetzung, <span class="dot a-st"></span>Stil.</li><li>Markiertes Wort antippen: grüner Knopf = Vorschlag übernehmen, „So lassen“ = Hinweis ausblenden.</li><li>„Alle Rechtschreibfehler korrigieren“ übernimmt jeweils den ersten Vorschlag. Mit „Rückgängig“ nimmst du es zurück.</li><li>Fachwörter mit „Ins Wörterbuch“ speichern.</li><li>In den Einstellungen kannst du die <strong>genaue Prüfung</strong> einschalten (auch Stil und Füllwörter).</li></ul>')}
@@ -384,6 +422,7 @@
     ['abgegeben', 'Abgegeben', (r) => !!r.abgegebenAm],
     ['alle', 'Alle', () => true],
   ];
+  const auswahl = new Set(); let auswahlModus = false;
   const merk = { get: (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
   async function viewHome() {
     app.innerHTML = '<p class="loading">Lädt …</p>';
@@ -399,13 +438,14 @@
     if (!next.hasSignature) html += `<div class="msg info">✍ Noch keine Unterschrift hinterlegt. Das geht in den <a href="#/einstellungen">Einstellungen</a>.</div>`;
     html += `<button class="primary big" id="newbtn" ${locked('neu') ? 'disabled' : ''}><span class="plus">+</span> Neuer Wochenbericht</button>
       <button class="importbtn" id="impbtn" ${locked('neu') ? 'disabled' : ''}>⇪ Alte Berichte hochladen (PDF)</button>
-      <h2 class="mt2">Meine Berichte</h2>`;
+      <div class="listhead mt2"><h2>Meine Berichte</h2><button class="small" id="selbtn" ${reports.length ? '' : 'hidden'}>☑ Auswählen</button></div>
+      <p class="muted small-t selhint">${istTouch() ? 'Tipp: Bericht lange gedrückt halten, um mehrere auszuwählen.' : ''}</p>`;
     let tab = merk.get('bh_reiter', 'bearbeitung');
     if (!REITER.some(([k]) => k === tab)) tab = 'bearbeitung';
     html += `<div class="tabs" role="tablist">${REITER.map(([k, t, f]) => `<button role="tab" data-tab="${k}" aria-selected="${k === tab}">${t} <span class="count">${reports.filter(f).length}</span></button>`).join('')}</div><div id="tablist"></div>`;
     app.innerHTML = html;
-    const item = (r, chip) => `<a class="item link" href="#/bericht/${esc(r.id)}">
-        <div class="nr">${r.nr}</div>
+    const item = (r, chip) => `<a class="item link${auswahl.has(r.id) ? ' sel' : ''}" href="#/bericht/${esc(r.id)}" data-id="${esc(r.id)}">
+        <span class="selbox" aria-hidden="true"></span><div class="nr">${r.nr}</div>
         <div class="main"><strong>Nr. ${r.nr} · KW ${r.kw}/${String(r.jahr).slice(2)}</strong>
         <span class="muted">${deShort(r.weekStart)} – ${de(r.bis)} · ${esc(r.bereich || '–')}${r.status === 'abgeschlossen' ? ' · unterschrieben ' + deDate(r.signedAt) : ` · ${r.filled} von ${r.total} Tagen ausgefüllt`}${r.abgegebenAm ? ' · abgegeben ' + de(r.abgegebenAm) : ''}${r.importiert ? ' · aus PDF' : ''}${r.status === 'abgeschlossen' && !r.editable ? ' · Frist abgelaufen' : ''}</span>
         ${r.status === 'abgeschlossen' ? '' : `<div class="progress"><span data-p="${Math.round(100 * r.filled / Math.max(1, r.total))}"></span></div>`}</div>${chip ? statusChip(r) : ''}</a>`;
@@ -418,7 +458,81 @@
       fillBars();
     };
     $$('[data-tab]').forEach((b) => { b.onclick = () => zeige(b.dataset.tab); });
-    zeige(tab);
+
+    /* ---- Mehrfachauswahl: lange druecken (Handy/Tablet) oder Knopf "Auswählen" (PC) ---- */
+    const sichtbar = () => reports.filter(REITER.find(([x]) => x === tab)[2]);
+    const leiste = () => {
+      let bar = $('#selbar');
+      if (!auswahlModus) { if (bar) bar.remove(); document.body.classList.remove('selmode'); $('#selbtn').textContent = '☑ Auswählen'; return; }
+      document.body.classList.add('selmode'); $('#selbtn').textContent = 'Auswahl beenden';
+      if (!bar) { bar = document.createElement('div'); bar.id = 'selbar'; bar.className = 'selbar'; document.body.appendChild(bar); }
+      const gew = reports.filter((r) => auswahl.has(r.id)), alleAbg = gew.length && gew.every((r) => r.abgegebenAm);
+      bar.innerHTML = `<span class="selcount"><strong>${gew.length}</strong> ausgewählt</span>
+        <button class="small" data-sel="alle">${sichtbar().every((r) => auswahl.has(r.id)) && sichtbar().length ? 'Keine' : 'Alle'}</button>
+        <button class="small primary" data-sel="pdf" ${gew.length && !locked('pdf') ? '' : 'disabled'}>⇩ PDFs speichern</button>
+        <button class="small" data-sel="abg" ${gew.length ? '' : 'disabled'}>${alleAbg ? '↺ Abgabe zurücknehmen' : '✓ Abgegeben'}</button>
+        <button class="small" data-sel="ende" aria-label="Auswahl beenden">✕</button>`;
+      bar.onclick = async (e) => {
+        const b = e.target.closest('[data-sel]'); if (!b) return;
+        const k = b.dataset.sel;
+        if (k === 'ende') return beenden();
+        if (k === 'alle') { const v = sichtbar(), alle = v.every((r) => auswahl.has(r.id)); v.forEach((r) => (alle ? auswahl.delete(r.id) : auswahl.add(r.id))); return neu(); }
+        if (k === 'pdf') return busy(b, () => savePdfs(gew));
+        if (k === 'abg') return abgabeMehrere(gew, alleAbg);
+      };
+    };
+    const neu = () => { zeige(tab); leiste(); };
+    const beenden = () => { auswahlModus = false; auswahl.clear(); neu(); };
+    const starten = (id) => { auswahlModus = true; if (id) auswahl.add(id); neu(); if (navigator.vibrate) try { navigator.vibrate(15); } catch {} };
+    $('#selbtn').onclick = () => (auswahlModus ? beenden() : starten());
+
+    let timer = null, start = null, langGedrueckt = false;
+    const list = $('#tablist');
+    list.addEventListener('pointerdown', (e) => {
+      const it = e.target.closest('a.item[data-id]'); if (!it || e.pointerType === 'mouse') return;
+      start = { x: e.clientX, y: e.clientY }; langGedrueckt = false;
+      clearTimeout(timer);
+      timer = setTimeout(() => { langGedrueckt = true; if (auswahlModus) { auswahl.add(it.dataset.id); neu(); } else starten(it.dataset.id); }, 480);
+    });
+    const abbruch = () => clearTimeout(timer);
+    list.addEventListener('pointermove', (e) => { if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) abbruch(); });
+    list.addEventListener('pointerup', abbruch);
+    list.addEventListener('pointercancel', abbruch);
+    list.addEventListener('contextmenu', (e) => { if (e.target.closest('a.item[data-id]') && (langGedrueckt || istTouch())) e.preventDefault(); });
+    list.addEventListener('click', (e) => {
+      const it = e.target.closest('a.item[data-id]'); if (!it) return;
+      if (langGedrueckt) { e.preventDefault(); langGedrueckt = false; return; }
+      if (!auswahlModus) return;
+      e.preventDefault();
+      const id = it.dataset.id;
+      if (auswahl.has(id)) auswahl.delete(id); else auswahl.add(id);
+      neu();
+    });
+
+    async function abgabeMehrere(gew, zuruecknehmen) {
+      let datum = null;
+      if (zuruecknehmen) {
+        const ok = await modal(`<h2>Abgabe zurücknehmen?</h2><p>${gew.length} Bericht${gew.length === 1 ? '' : 'e'} (Nr. ${gew.map((r) => r.nr).join(', ')}) gelten dann wieder als nicht abgegeben.</p><div class="actions"><button class="primary" data-m="yes">Zurücknehmen</button><button data-m="no">Abbrechen</button></div>`);
+        if (ok !== 'yes') return;
+      } else {
+        const offen = gew.filter((r) => r.status !== 'abgeschlossen');
+        const res = await modal(`<form><h2>Als abgegeben markieren</h2><p>${gew.length} Bericht${gew.length === 1 ? '' : 'e'}: Nr. ${gew.map((r) => r.nr).join(', ')}</p>
+          ${offen.length ? `<div class="msg warn">Noch nicht unterschrieben: Nr. ${offen.map((r) => r.nr).join(', ')}</div>` : ''}
+          <label for="abgd">Abgegeben am</label><input type="date" id="abgd" name="datum" value="${today()}" max="${today()}" required>
+          <div class="actions"><button class="primary" data-m="form">Speichern</button><button type="button" data-m="no">Abbrechen</button></div></form>`);
+        if (!res || typeof res !== 'object') return;
+        datum = res.datum;
+      }
+      let fehler = 0;
+      for (const r of gew) {
+        try { await api('POST', '/api/report/abgabe', { id: r.id, abgegeben: !zuruecknehmen, datum }); } catch { fehler++; }
+      }
+      toast(fehler ? `${gew.length - fehler} geändert, ${fehler} fehlgeschlagen.` : zuruecknehmen ? 'Abgabe zurückgenommen.' : `${gew.length} als abgegeben markiert.`);
+      auswahlModus = false; auswahl.clear();
+      viewHome();
+    }
+
+    zeige(tab); leiste();
     const btn = $('#newbtn'); if (btn) btn.onclick = () => newReport(next);
     $('#impbtn').onclick = () => importDialog();
   }
