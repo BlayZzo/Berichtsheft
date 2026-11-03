@@ -406,8 +406,8 @@
     app.innerHTML = html;
     const item = (r, chip) => `<a class="item link" href="#/bericht/${esc(r.id)}">
         <div class="nr">${r.nr}</div>
-        <div class="main"><strong>KW ${r.kw}/${String(r.jahr).slice(2)} · ${deShort(r.weekStart)} – ${de(r.bis)}</strong>
-        <span class="muted">${esc(r.bereich || '–')}${r.status === 'abgeschlossen' ? ' · unterschrieben ' + deDate(r.signedAt) : ` · ${r.filled} von ${r.total} Tagen ausgefüllt`}${r.abgegebenAm ? ' · abgegeben ' + de(r.abgegebenAm) : ''}${r.importiert ? ' · aus PDF' : ''}${r.status === 'abgeschlossen' && !r.editable ? ' · Frist abgelaufen' : ''}</span>
+        <div class="main"><strong>Nr. ${r.nr} · KW ${r.kw}/${String(r.jahr).slice(2)}</strong>
+        <span class="muted">${deShort(r.weekStart)} – ${de(r.bis)} · ${esc(r.bereich || '–')}${r.status === 'abgeschlossen' ? ' · unterschrieben ' + deDate(r.signedAt) : ` · ${r.filled} von ${r.total} Tagen ausgefüllt`}${r.abgegebenAm ? ' · abgegeben ' + de(r.abgegebenAm) : ''}${r.importiert ? ' · aus PDF' : ''}${r.status === 'abgeschlossen' && !r.editable ? ' · Frist abgelaufen' : ''}</span>
         ${r.status === 'abgeschlossen' ? '' : `<div class="progress"><span data-p="${Math.round(100 * r.filled / Math.max(1, r.total))}"></span></div>`}</div>${chip ? statusChip(r) : ''}</a>`;
     const leer = { bearbeitung: 'Nichts in Bearbeitung.', fertig: 'Keine fertigen (unterschriebenen) Berichte, die noch nicht abgegeben sind.', abgegeben: 'Noch nichts als abgegeben markiert. Das geht im Bericht mit „Als abgegeben markieren“.', alle: 'Noch keine Berichte. Tippe oben auf „Neuer Wochenbericht“ oder lade alte Berichte als PDF hoch.' };
     const zeige = (k) => {
