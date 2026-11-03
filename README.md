@@ -14,8 +14,8 @@ Eigenständiges Programm unter https://bh-bremen.de
   und „Archiviert“ (Frist abgelaufen, aufklappbar). Samstag/Sonntag sind einklappbar; leer oder ausgeblendet
   steht im PDF „————————“, eigener Text ersetzt die Striche. Jeder Bericht lässt sich löschen, unterschriebene nur nach
   Eintippen von „LÖSCHEN“ (mit Angebot, vorher das PDF zu speichern).
-- **Alte Berichte hochladen:** fertige PDFs (Formular der Handelskammer, z. B. aus Word) werden mit `pdftotext`
-  eingelesen und als Entwurf angelegt (Woche, Lehrjahr, Bereich, Texte, Stunden, Nummer aus dem Dateinamen).
+- **Alte Berichte hochladen:** fertige PDFs (Formular der Handelskammer, z. B. aus Word) werden
+  mit eingebautem PDF-Leser (ohne Zusatzprogramme) eingelesen und als Entwurf angelegt (Woche, Lehrjahr, Bereich, Texte, Stunden, Nummer aus dem Dateinamen).
 - **Reiter auf der Startseite:** In Bearbeitung, Fertig, Abgegeben, Alle (nach Nummer sortiert). Status „abgegeben“
   mit Datum pro Bericht. Dateiname pro Konto einstellbar (Platzhalter `{nachname}`, `{nr}` …).
 - **Einstellungen:** Vorname, Nachname, Firma, Lehrberuf, Lehrjahr (Pflicht), Stunden, Berufsschultage, **Arbeitsorte**
