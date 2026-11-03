@@ -512,7 +512,7 @@
       </tbody></table>
       <div class="days"><div class="dhead"><span></span><span>Betriebliche Tätigkeiten, Unterweisungen, Unterricht, Themen der Berufsschule</span><span>Std.</span></div>
       ${r.days.map((d, i) => dayRow(d, i, ed)).join('')}</div>
-      ${ed ? `<label class="inline wkend"><input type="checkbox" data-f="wochenende" ${r.days.some((d) => wd(d.date) >= 5) ? 'checked' : ''}> Samstag und Sonntag auch eintragen <span class="muted">(z. B. bei Wochenendarbeit)</span></label>` : ''}`;
+      ${ed ? `<label class="inline wkend"><input type="checkbox" data-f="wochenende" ${r.days.some((d) => wd(d.date) >= 5) ? 'checked' : ''}> Samstag und Sonntag auch eintragen</label><p class="muted small-t wkhint">Z. B. bei Wochenendarbeit. Leer oder ausgeblendet steht dort im PDF ————————</p>` : ''}`;
     if (ed) {
       html += `<div class="sigrow"><div><label for="sigdate">Datum</label><input type="date" id="sigdate" value="${today()}" max="${today()}"></div>
         <div class="sigprev">${u.hasSignature ? `<img src="/api/me/signature?t=${Date.now()}" alt="Unterschrift">` : '<a href="#/einstellungen">Unterschrift hinterlegen</a>'}</div>
@@ -542,7 +542,7 @@
       <div class="dtext">
         <div class="dmeta"><b>${deShort(d.date)}</b>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}
           ${ed ? `<select data-i="${i}" data-k="type" aria-label="Art des Tages">${Object.entries(types).map(([k, t]) => `<option value="${k}" ${k === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select>` : `<span class="muted">${types[d.type]}</span>`}</div>
-        ${ed ? `<div class="tawrap"><div class="mirror" id="mir-${i}" aria-hidden="true">${esc(d.text)}&#8203;</div><textarea data-i="${i}" data-k="text" spellcheck="false" lang="de" rows="4" placeholder="Was hast du an diesem Tag gemacht?">${esc(d.text)}</textarea></div>
+        ${ed ? `<div class="tawrap"><div class="mirror" id="mir-${i}" aria-hidden="true">${esc(d.text)}&#8203;</div><textarea data-i="${i}" data-k="text" spellcheck="false" lang="de" rows="4" placeholder="${wd(d.date) >= 5 ? 'Leer lassen: im PDF steht dann ————————' : 'Was hast du an diesem Tag gemacht?'}">${esc(d.text)}</textarea></div>
         <div class="tools">
           <button type="button" data-act="insert" data-i="${i}">＋ Einfügen</button>
           <button type="button" data-act="ideas" data-i="${i}" ${locked('ideen') ? 'disabled' : ''}>💡 Ideen</button>

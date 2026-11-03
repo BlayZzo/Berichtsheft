@@ -312,3 +312,4 @@ label.lay input[type=range] { width: 100%; accent-color: var(--brand, #1f4e8c); 
 label.vtog { font-weight: 600; margin: .2rem 0 .3rem; }
 #vbody { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--line); }
 .sigrow.v { margin-top: .9rem; }
+.wkhint { margin: .15rem 0 0; }

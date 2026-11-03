@@ -15,7 +15,7 @@ const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '3.13.0';
+const VERSION = '3.14.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -328,6 +328,7 @@ function rowsOf(r) {
   for (const d of r.days) rows[W.weekday(d.date)] = d;
   return rows;
 }
+const WOCHENENDE_STRICHE = '\u2014'.repeat(8);
 const NO_HOURS = new Set(['urlaub', 'krank', 'feiertag', 'frei']);
 function fitsOf(r) { return rowsOf(r).map((d, i) => (d ? fitDay(d.text, i) : null)); }
 
@@ -336,6 +337,8 @@ function buildPdf(r, { blank = false, preview = null } = {}) {
   const k = nameOf(r);
   /* Leere Tage (z. B. ein ungenutzter Sonntag) bleiben im Formular ganz leer, auch ohne Stunden */
   const rows = rowsOf(r).map((d) => d && ({ text: d.text, hours: !d.text.trim() || (NO_HOURS.has(d.type) && !Number(d.hours)) ? null : d.hours }));
+  /* Samstag/Sonntag ohne Text (oder ausgeblendet): Striche statt leerem Feld. Eigener Text ersetzt sie. */
+  if (!blank) for (const i of [5, 6]) if (!rows[i] || !rows[i].text.trim()) rows[i] = { text: WOCHENENDE_STRICHE, hours: null };
   let footer = '';
   if (done) {
     footer = `Digital unterschrieben am ${W.de(r.signedAt.slice(0, 10))}`;
