@@ -12,11 +12,12 @@ const crypto = require('crypto');
 const W = require('./lib/weeks');
 const { fill, fitDay, cleanLayout } = require('./lib/fill');
 const { liesBericht } = require('./lib/import');
+const KI = require('./lib/ki');
 const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '4.0.1';
+const VERSION = '4.1.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -47,6 +48,7 @@ const FUNKTIONEN = {
   bearbeiten: 'Berichte schreiben und speichern',
   pruefung: 'Rechtschreibprüfung',
   ideen: 'Ideen-Vorschläge',
+  ki: 'Schreib-KI (Satz aus Stichworten)',
   unterschreiben: 'Unterschreiben',
   pdf: 'PDF herunterladen'
 };
@@ -60,6 +62,7 @@ const DEFAULT_SETTINGS = {
   dateiname: 'Berichtsheft_{nachname}_NR{nr}',
   bearbeitbarTage: 90,
   ltUrl: '',
+  kiModell: '',
   gesperrt: {},
   speicherMB: 20,
   betreiber: { name: '', kontakt: '', serverOrt: 'Deutschland' },
@@ -189,6 +192,10 @@ function clientIp(req) {
 /* ---------- Einrichtung ---------- */
 
 const SETUP_FILE = path.join(SECRET, 'setup-code.txt');
+/* API-Schluessel der Schreib-KI: nur in einer eigenen Datei, nie in der Datenbank oder im Browser */
+const KI_FILE = path.join(SECRET, 'ki-schluessel.txt');
+const kiKey = () => { try { return fs.readFileSync(KI_FILE, 'utf8').trim(); } catch { return process.env.ANTHROPIC_API_KEY || ''; } };
+const kiBereit = () => !!kiKey();
 const needsSetup = () => !Object.values(db.users).some((u) => u.role === 'admin');
 function setupCode() {
   if (!needsSetup()) return null;
@@ -553,7 +560,7 @@ route('GET', '/api/state', null, (ctx) => ({
   settings: ctx.user ? {
     arbeitstage: db.settings.arbeitstage, typen: W.TYPEN, vorbelegung: db.settings.vorbelegung,
     bearbeitbarTage: db.settings.bearbeitbarTage, bereiche: db.settings.bereiche,
-    gesperrt: db.settings.gesperrt || {}, sperrText: db.settings.sperrText, funktionen: FUNKTIONEN
+    gesperrt: db.settings.gesperrt || {}, sperrText: db.settings.sperrText, funktionen: FUNKTIONEN, ki: kiBereit()
   } : null
 }));
 
@@ -975,13 +982,55 @@ route('POST', '/api/admin/delete', 'admin', (ctx) => {
 });
 
 /* Rechtschreibpruefung testen (fuer die Fehlersuche im Admin-Bereich) */
+route('GET', '/api/admin/kitest', 'admin', async () => {
+  if (!kiBereit()) return { ok: false, fehler: 'Noch kein API-Schlüssel eingetragen.' };
+  try { const r = await KI.testen(kiKey(), db.settings.kiModell); return { ok: true, ...r }; }
+  catch (e) { return { ok: false, fehler: e.message }; }
+});
+
+/* Schreib-KI: Stichworte eines Tages -> kurzer Satz im eigenen Stil */
+const kiAnfragen = new Map();
+route('POST', '/api/ki', 'azubi', async (ctx) => {
+  gesperrt('ki');
+  if (!kiBereit()) fail(503, 'Die Schreib-KI ist noch nicht eingerichtet (Admin → Einstellungen).');
+  const u = ctx.user, now = Date.now();
+  const liste = (kiAnfragen.get(u.id) || []).filter((t) => now - t < 60 * 60e3);
+  if (liste.length >= 60) fail(429, 'Du hast die Schreib-KI in der letzten Stunde sehr oft benutzt. Bitte später nochmal.');
+  liste.push(now); kiAnfragen.set(u.id, liste);
+  const r = findReport(ctx, ctx.body.id);
+  const date = str(ctx.body.date, 10), day = r.days.find((d) => d.date === date);
+  if (!day) fail(400, 'Unbekannter Tag.');
+  const stichworte = text(ctx.body.text, 1500).trim();
+  if (stichworte.replace(/[^\p{L}\p{N}]/gu, '').length < 3) fail(400, 'Bitte erst ein paar Stichworte eintragen.');
+  /* Beispiele: Texte aus den eigenen fertigen (unterschriebenen, abgegebenen oder hochgeladenen) Berichten */
+  const fertig = ownReports(u.id).filter((x) => x.id !== r.id && (x.status === 'abgeschlossen' || x.abgegebenAm || x.importiert))
+    .sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  const kandidaten = [];
+  for (const x of fertig) for (const d of x.days) {
+    const t = d.text.trim();
+    if (t.length >= 25 && /[\p{L}]/u.test(t) && !kandidaten.some((k) => k.t === t)) kandidaten.push({ t: t.slice(0, 320), gleich: d.type === day.type });
+  }
+  const beispiele = [...kandidaten.filter((k) => k.gleich), ...kandidaten.filter((k) => !k.gleich)].slice(0, 12).map((k) => k.t);
+  const andereTage = r.days.filter((d) => d.date !== date && d.text.trim().length > 10).map((d) => d.text.trim().slice(0, 200)).slice(0, 6);
+  const vorher = (Array.isArray(ctx.body.vorher) ? ctx.body.vorher : []).map((v) => text(v, 600).trim()).filter(Boolean).slice(-4);
+  /* Laenge: was ins Formularfeld passt, aber nicht laenger als die eigenen Beispiele es gewohnt sind */
+  const schnitt = beispiele.length ? beispiele.reduce((a, b) => a + b.length, 0) / beispiele.length : 160;
+  const maxZeichen = Math.round(Math.min(330, Math.max(110, schnitt * 1.4, stichworte.length * 1.3)));
+  let erg;
+  try {
+    erg = await KI.satzBauen({ key: kiKey(), modell: db.settings.kiModell, stichworte, typ: day.type, bereich: r.bereich, beruf: u.beruf, beispiele, andereTage, vorher, maxZeichen });
+  } catch (e) { fail(502, e.message); }
+  const i = W.weekday(date), fit = fitDay(erg.text, i);
+  return { text: erg.text, passt: fit.fits, beispiele: beispiele.length };
+});
+
 route('GET', '/api/admin/ltcheck', 'admin', async (ctx) => {
   const t0 = Date.now();
   const r = await spellcheck({}, 'Das ist ein Tset mit einem Feler.');
   return { ok: !r.error, ms: Date.now() - t0, treffer: (r.matches || []).length, fehler: r.error ? lastLtError : '', adresse: (db.settings.ltUrl || LT_DEFAULT) };
 });
 
-route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER, funktionen: FUNKTIONEN }));
+route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER, funktionen: FUNKTIONEN, ki: { gesetzt: kiBereit(), ende: kiKey().slice(-4), standard: KI.STANDARD_MODELL } }));
 
 route('POST', '/api/admin/settings', 'admin', (ctx) => {
   const b = ctx.body.settings || {}, s = db.settings;
@@ -993,6 +1042,16 @@ route('POST', '/api/admin/settings', 'admin', (ctx) => {
   if ('ltUrl' in b) { const v = str(b.ltUrl, 200); if (v && !/^https?:\/\/[^\s]+$/.test(v)) fail(400, 'Adresse der Rechtschreibprüfung ungültig.'); s.ltUrl = v; }
   if (b.gesperrt && typeof b.gesperrt === 'object') s.gesperrt = Object.fromEntries(Object.keys(FUNKTIONEN).map((k) => [k, !!b.gesperrt[k]]));
   if ('speicherMB' in b) s.speicherMB = num(b.speicherMB, 1, 10000, 20);
+  if ('kiModell' in b) { const v = str(b.kiModell, 80).trim(); if (v && !/^[a-z0-9.\-_:@]+$/i.test(v)) fail(400, 'Ungültiger Modellname.'); s.kiModell = v; }
+  if ('kiKey' in b) {
+    const k = str(b.kiKey, 300).trim();
+    if (k === '-') { try { fs.unlinkSync(KI_FILE); } catch {} }
+    else if (k) {
+      if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(k)) fail(400, 'Das sieht nicht nach einem API-Schlüssel von Anthropic aus (beginnt mit sk-ant-).');
+      fs.mkdirSync(SECRET, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(KI_FILE, k + '\n', { mode: 0o600 });
+    }
+  }
   if (b.betreiber && typeof b.betreiber === 'object') {
     s.betreiber = { name: str(b.betreiber.name, 120), kontakt: str(b.betreiber.kontakt, 160), serverOrt: str(b.betreiber.serverOrt, 60) || 'Deutschland' };
   }

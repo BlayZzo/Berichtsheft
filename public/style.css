@@ -350,3 +350,11 @@ a.item.sel .selbox::after { content: '✓'; position: absolute; inset: 0; displa
 .selbar .selcount { flex: 1 1 auto; white-space: nowrap; }
 body.selmode main { padding-bottom: 9rem !important; }
 @media (max-width: 720px) { .selbar { bottom: 4.6rem; width: calc(100vw - 1rem); } body.selmode .toast { bottom: 10.5rem; } }
+
+/* Schreib-KI */
+.tools .kibtn { background: color-mix(in srgb, var(--brand-2) 12%, var(--card)); border-color: color-mix(in srgb, var(--brand-2) 45%, var(--line)); color: var(--brand-2); font-weight: 650; }
+.kipanel p { margin: 0 0 .45rem; }
+.kirow { gap: .4rem; flex-wrap: wrap; }
+.kiwait { color: var(--brand-2); font-weight: 600; animation: kipuls 1.2s ease-in-out infinite; }
+@keyframes kipuls { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .kiwait { animation: none; } }

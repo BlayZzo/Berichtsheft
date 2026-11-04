@@ -24,6 +24,10 @@ Eigenständiges Programm unter https://bh-bremen.de
 - **Beim Schreiben:** ＋ Einfügen (Arbeitsorte/Bausteine an der Cursor-Stelle), ★ Markiertes merken,
   💡 Ideen (aus den eigenen früheren Berichten und der Woche, einfügen oder kopieren), ↶ Rückgängig.
   Speichert bei jeder Änderung, auf jedem Gerät weiter bearbeitbar (Handy schreiben, Tablet herunterladen).
+- **✨ Schreib-KI:** „Satz bauen“ macht aus Stichworten einen kurzen Satz im Stil der eigenen fertigen Berichte,
+  „Neu formulieren“ für anderen Satzbau, „Zurück zu meinen Stichworten“. Läuft über die Claude-API (Anthropic);
+  der API-Schlüssel wird im Admin-Bereich eingetragen und liegt nur in `secret/ki-schluessel.txt`. Ohne Schlüssel
+  ist der Knopf ausgeblendet; sperrbar unter „Funktionen sperren“.
 - **Rechtschreibung und Grammatik** mit LanguageTool auf dem eigenen Server, direkt im Text farbig unterstrichen
   (Rechtschreibung rot, Grammatik blau, Zeichensetzung orange, Stil lila). Wort antippen → Vorschlag übernehmen,
   „Alle Rechtschreibfehler korrigieren“, Wörterbuch, genaue Prüfung (Stil, Füllwörter) zuschaltbar.

@@ -373,6 +373,7 @@
       ${h('6. Wo liegen die Daten?')}
       <p>Auf einem gemieteten Server der Hetzner Online GmbH (Industriestr. 25, 91710 Gunzenhausen) in ${esc(d.serverOrt || 'Deutschland')}. Hetzner verarbeitet die Daten nur als technischer Dienstleister (Auftragsverarbeitung) und nicht für eigene Zwecke. Die Verbindung ist per https verschlüsselt.</p>
       <p>Die Rechtschreib- und Grammatikprüfung läuft auf demselben Server. Deine Texte werden dafür <strong>nicht</strong> an andere Anbieter geschickt. Es werden keine Schriften, Skripte oder Inhalte von fremden Servern geladen.</p>
+      <p><strong>Schreib-KI (nur wenn du sie benutzt):</strong> Tippst du bei einem Tag auf „Satz bauen“ oder „Neu formulieren“, werden die Stichworte dieses Tages, die anderen Texte dieser Woche, einige Texte aus deinen fertigen Berichten (als Stil-Beispiele), dein Lehrberuf und der Ausbildungsbereich an die Claude-API von Anthropic (Anthropic PBC, USA; Datenverarbeitung auch in den USA) geschickt, damit daraus ein Satz formuliert wird. Name, Firma, Unterschrift und Konto-Daten werden <strong>nicht</strong> mitgeschickt. Anthropic nutzt Daten aus der API nach eigenen Angaben nicht zum Trainieren und löscht sie nach kurzer Zeit. Ohne Antippen wird nichts übertragen. Schreib also keine Namen von Personen oder Geheimnisse des Betriebs in die Stichworte, wenn du die KI nutzt.</p>
       ${h('7. Wer kann die Daten sehen?')}
       <p>Deine Berichte siehst nur du. Der Admin-Bereich zeigt nur Kontodaten (Name, Firma, Lehrberuf, Aktivität und belegten Speicher), keine Berichte. Als Betreiber des Servers hat der Verantwortliche technisch Zugriff auf alle gespeicherten Daten. Er nutzt diesen Zugriff nur für Wartung, Fehlerbehebung und Sicherungen.</p>
       ${h('8. Wie lange werden Daten gespeichert?')}
@@ -395,7 +396,7 @@
       ${S.user && !isAdmin() ? '<div class="actions"><button class="primary" id="tourbtn">Einführung noch einmal ansehen</button></div><div class="mt"></div>' : ''}
       ${q('Erste Anmeldung', '<ol><li>Benutzername und Startpasswort vom Admin eingeben.</li><li>Ein eigenes Passwort festlegen.</li><li>Name, Firma, Lehrberuf, Lehrjahr und das Jahr, in dem die Ausbildung endet, eintragen.</li></ol>', true)}
       ${q('Einmal einrichten', '<ol><li><strong>Einstellungen → Unterschrift:</strong> mit Finger oder Maus unterschreiben, oder ein Foto deiner Unterschrift auf weißem Papier hochladen. Darunter stellst du mit Reglern ein, wie groß Unterschrift und Datum im PDF sind und wo die Unterschrift sitzt.</li><li><strong>Einstellungen → Unterschrift gesetzliche/r Vertreter/in:</strong> Häkchen setzen, dann ausklappen, unterschreiben lassen und Größe einstellen. Sie wird mit demselben Datum unten links eingesetzt.</li><li><strong>Einstellungen → Arbeitsorte:</strong> z. B. Überschrift „Hof“, Adresse „Liebauer Straße 14, Bremen“, Bereich „AW“, Ausbilder/Geselle „Herr Müller“.</li><li>Stunden pro Tag und feste Berufsschultage einstellen.</li></ol>')}
-      ${q('Alte Berichte, Status und Dateiname', '<ul><li><strong>Alte Berichte hochladen:</strong> Auf der Startseite „Alte Berichte hochladen (PDF)“. Fertige PDFs auf dem Formular der Handelskammer werden eingelesen (Woche, Lehrjahr, Bereich, Texte, Stunden, Nummer aus dem Dateinamen) und landen „In Bearbeitung“. Kurz prüfen, ergänzen, unterschreiben.</li><li><strong>Reiter:</strong> In Bearbeitung, Fertig (unterschrieben), Abgegeben und Alle, jeweils nach Nummer sortiert.</li><li><strong>Abgegeben:</strong> Im Bericht „Als abgegeben markieren“ mit Datum; lässt sich zurücknehmen.</li><li><strong>Mehrere auswählen:</strong> Am Handy/Tablet einen Bericht lange gedrückt halten, am PC „Auswählen“ tippen. Dann weitere antippen und unten „PDFs speichern“ oder „Abgegeben“ wählen.</li><li><strong>Dateiname:</strong> In den Einstellungen änderbar, z. B. <em>Berichtsheft {nachname} NR.{nr}</em>.</li></ul>')}
+      ${q('Alte Berichte, Status und Dateiname', '<ul><li><strong>Alte Berichte hochladen:</strong> Auf der Startseite „Alte Berichte hochladen (PDF)“. Fertige PDFs auf dem Formular der Handelskammer werden eingelesen (Woche, Lehrjahr, Bereich, Texte, Stunden, Nummer aus dem Dateinamen) und landen „In Bearbeitung“. Kurz prüfen, ergänzen, unterschreiben.</li><li><strong>Reiter:</strong> In Bearbeitung, Fertig (unterschrieben), Abgegeben und Alle, jeweils nach Nummer sortiert.</li><li><strong>Abgegeben:</strong> Im Bericht „Als abgegeben markieren“ mit Datum; lässt sich zurücknehmen.</li><li><strong>✨ Satz bauen:</strong> Stichworte in den Tag schreiben (auch mit Fehlern), dann „Satz bauen“. Die KI macht daraus einen kurzen Satz im Stil deiner fertigen Berichte. „Neu formulieren“ gibt einen anderen Satzbau, „Zurück zu meinen Stichworten“ holt deinen Text zurück.</li><li><strong>Mehrere auswählen:</strong> Am Handy/Tablet einen Bericht lange gedrückt halten, am PC „Auswählen“ tippen. Dann weitere antippen und unten „PDFs speichern“ oder „Abgegeben“ wählen.</li><li><strong>Dateiname:</strong> In den Einstellungen änderbar, z. B. <em>Berichtsheft {nachname} NR.{nr}</em>.</li></ul>')}
       ${q('Neuen Wochenbericht anlegen', '<ol><li>Auf der Startseite <strong>Neuer Wochenbericht</strong> tippen.</li><li><strong>Diese Woche</strong> oder <strong>Nächste Woche</strong> wählen, oder ein beliebiges Datum. Die Woche wird automatisch auf Montag bis Sonntag gesetzt.</li><li>Die Nummer zählt von selbst weiter. Nur ändern, wenn sie nicht stimmt.</li><li>Ausbildungsbereich wählen, z. B. AW, BBS oder Betrieb.</li></ol>')}
       ${q('Tage ausfüllen', '<ul><li>Alles wird beim Schreiben gespeichert. Du kannst den Bericht jederzeit schließen und später weitermachen, auch auf einem anderen Gerät.</li><li><strong>Einfügen:</strong> setzt einen Arbeitsort oder Textbaustein an der Stelle ein, wo der Cursor steht.</li><li><strong>Markiertes merken:</strong> Text im Feld markieren und tippen. Er wird ein Textbaustein für später.</li><li><strong>Ideen:</strong> Vorschläge aus deinen früheren Berichten und den anderen Tagen der Woche. Einfügen oder kopieren, danach selbst anpassen.</li><li><strong>Rückgängig:</strong> macht das letzte Einfügen, die letzte Idee oder Korrektur wieder rückgängig.</li><li>Über das kleine Auswahlfeld beim Tag stellst du Urlaub, Krank, Feiertag oder Berufsschule ein.</li></ul>')}
       ${q('Rechtschreibung', '<ul><li>Wird beim Schreiben automatisch geprüft. Fehler sind direkt im Text farbig unterstrichen: <span class="dot a-rs"></span>Rechtschreibung, <span class="dot a-gr"></span>Grammatik, <span class="dot a-zs"></span>Zeichensetzung, <span class="dot a-st"></span>Stil.</li><li>Markiertes Wort antippen: grüner Knopf = Vorschlag übernehmen, „So lassen“ = Hinweis ausblenden.</li><li>„Alle Rechtschreibfehler korrigieren“ übernimmt jeweils den ersten Vorschlag. Mit „Rückgängig“ nimmst du es zurück.</li><li>Fachwörter mit „Ins Wörterbuch“ speichern.</li><li>In den Einstellungen kannst du die <strong>genaue Prüfung</strong> einschalten (auch Stil und Füllwörter).</li></ul>')}
@@ -633,7 +634,7 @@
   function fillText(type, hol) { return ((S.settings.vorbelegung || {})[type] || '').replace(/\{name\}/g, hol || ''); }
 
   async function viewReport(id) {
-    R.id = id; R.checks = {}; R.dirty = false; R.undo = {}; R.panel = {}; R.showList = {};
+    R.id = id; R.checks = {}; R.dirty = false; R.undo = {}; R.panel = {}; R.showList = {}; R.ki = {};
     app.innerHTML = '<p class="loading">Lädt …</p>';
     try { const [rr, st] = await Promise.all([api('GET', '/api/report?id=' + encodeURIComponent(id)), api('GET', '/api/state')]); R.rep = rr.report; S = { ...S, ...st }; }
     catch (x) { app.innerHTML = `<div class="msg err">${esc(x.message)}</div><a href="#/">Zurück</a>`; return; }
@@ -701,6 +702,7 @@
           ${ed ? `<select data-i="${i}" data-k="type" aria-label="Art des Tages">${Object.entries(types).map(([k, t]) => `<option value="${k}" ${k === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select>` : `<span class="muted">${types[d.type]}</span>`}</div>
         ${ed ? `<div class="tawrap"><div class="mirror" id="mir-${i}" aria-hidden="true">${esc(d.text)}&#8203;</div><textarea data-i="${i}" data-k="text" spellcheck="false" lang="de" rows="4" placeholder="${wd(d.date) >= 5 ? 'Leer lassen: im PDF steht dann ————————' : 'Was hast du an diesem Tag gemacht?'}">${esc(d.text)}</textarea></div>
         <div class="tools">
+          ${S.settings.ki ? `<button type="button" class="kibtn" data-act="ki" data-i="${i}" id="kib-${i}" ${locked('ki') ? 'disabled' : ''}>✨ Satz bauen</button>` : ''}
           <button type="button" data-act="insert" data-i="${i}">＋ Einfügen</button>
           <button type="button" data-act="ideas" data-i="${i}" ${locked('ideen') ? 'disabled' : ''}>💡 Ideen</button>
           <button type="button" data-act="remember" data-i="${i}">★ Markiertes merken</button>
@@ -761,6 +763,40 @@
     if (R.panel[i] === kind) { el.innerHTML = ''; R.panel[i] = null; return; }
     R.panel[i] = kind; el.innerHTML = `<div class="panel">${html}</div>`;
   }
+  /* Schreib-KI: Stichworte -> Satz; "Neu formulieren" fuer anderen Satzbau, "Zurück" zu den eigenen Stichworten */
+  async function kiBauen(i, neu) {
+    const day = R.rep.days[i];
+    R.ki ||= {};
+    if (!neu || !R.ki[i]) {
+      if (!day.text.trim()) return toast('Erst ein paar Stichworte eintragen, dann „Satz bauen“.');
+      R.ki[i] = { stichworte: day.text, vorschlaege: [] };
+    }
+    const k = R.ki[i], btn = $('#kib-' + i), el = $('#panel-' + i);
+    R.panel[i] = 'ki';
+    el.innerHTML = '<div class="panel kipanel"><span class="kiwait">✨ Die KI formuliert …</span></div>';
+    if (btn) btn.disabled = true;
+    try {
+      await flushSave();
+      const r = await api('POST', '/api/ki', { id: R.rep.id, date: day.date, text: k.stichworte, vorher: k.vorschlaege });
+      k.vorschlaege.push(r.text);
+      setText(i, r.text);
+      if (R.panel[i] !== 'ki') return;
+      el.innerHTML = `<div class="panel kipanel">
+        <p class="small-t muted">✨ Von der KI formuliert${r.beispiele ? ` (im Stil deiner ${r.beispiele} früheren Einträge)` : ''}. Du kannst den Text jetzt noch selbst ändern.${r.passt ? '' : ' <strong>Etwas zu lang fürs Feld – bitte kürzen oder neu formulieren.</strong>'}</p>
+        <div class="row kirow"><button type="button" class="small" data-act="kineu" data-i="${i}">↻ Neu formulieren</button>
+        <button type="button" class="small" data-act="kizurueck" data-i="${i}">↶ Zurück zu meinen Stichworten</button>
+        <button type="button" class="small primary" data-act="kiok" data-i="${i}">✓ Passt so</button></div></div>`;
+    } catch (x) {
+      el.innerHTML = `<div class="panel kipanel"><div class="msg err">${esc(x.message)}</div></div>`;
+    } finally { if (btn) btn.disabled = locked('ki'); }
+  }
+  function kiZurueck(i) {
+    const k = R.ki && R.ki[i]; if (!k) return;
+    setText(i, k.stichworte);
+    $('#panel-' + i).innerHTML = ''; R.panel[i] = null; delete R.ki[i];
+    toast('Deine Stichworte sind wieder da.');
+  }
+
   function ortText(o) { return [o.titel, o.adresse ? `(${o.adresse})` : ''].filter(Boolean).join(' '); }
   function insertPanel(i) {
     const orte = S.user.orte || [], bs = S.user.bausteine || [];
@@ -832,6 +868,10 @@
       if (act === 'ignore') { R.ignored.add(b.dataset.key); renderIssues(i); return; }
       if (act === 'dict') return addDict(b.dataset.word);
       if (act === 'insert') return insertPanel(i);
+      if (act === 'ki') return kiBauen(i, false);
+      if (act === 'kineu') return kiBauen(i, true);
+      if (act === 'kizurueck') return kiZurueck(i);
+      if (act === 'kiok') { $('#panel-' + i).innerHTML = ''; R.panel[i] = null; delete R.ki[i]; return; }
       if (act === 'ideas') return ideasPanel(i);
       if (act === 'remember') return remember(i);
       if (act === 'undo') return undo(i);
@@ -1483,7 +1523,7 @@
     $$('[data-tab]').forEach((b) => { b.onclick = () => { location.hash = '#/admin/' + b.dataset.tab; }; });
     if (tab === 'konten') return adminUsers();
     const data = await api('GET', '/api/admin/settings');
-    if (tab === 'funktionen') adminLocks(data); else adminSettings(data.settings, data.bundeslaender);
+    if (tab === 'funktionen') adminLocks(data); else adminSettings(data.settings, data.bundeslaender, data.ki || {});
   }
 
   /* Fertiger Text zum Weitergeben, z. B. per WhatsApp */
@@ -1622,7 +1662,7 @@
     };
   }
 
-  function adminSettings(s, bl) {
+  function adminSettings(s, bl, ki = {}) {
     const T = S.settings.typen, vb = s.vorbelegung;
     $('#adm').innerHTML = `<div class="card"><h2>Vorlage</h2><p class="muted">Ausgefüllt wird das Formular „Ausbildungsnachweis (Berichtsheft) – täglich“ der Handelskammer Bremen.</p>
       <div class="actions"><a class="btn" href="/api/blank" target="_blank" rel="noopener">Leere Vorlage ansehen</a></div></div>
@@ -1635,6 +1675,14 @@
       <div id="berr"></div><div class="actions"><button class="primary">Speichern</button></div></form></div>
       <div class="card"><h2>Rechtschreibprüfung testen</h2><p class="muted">Prüft, ob der Dienst auf dem Server antwortet.</p>
       <div class="actions nomargin"><button id="lttest">Jetzt testen</button></div><div id="ltres"></div></div>
+      <div class="card"><form id="kif"><h2>Schreib-KI</h2>
+        <p class="muted">Macht aus Stichworten einen kurzen Satz („✨ Satz bauen“ bei jedem Tag). Läuft über die Claude-API von Anthropic. Dafür brauchst du einen API-Schlüssel von <strong>console.anthropic.com</strong> (Konto anlegen, Guthaben aufladen, unter „API Keys“ einen Schlüssel erstellen). Ein Satz kostet mit Haiku etwa 0,1 Cent.</p>
+        <p class="small-t">${ki.gesetzt ? `✓ Schlüssel ist hinterlegt (endet auf …${esc(ki.ende)}). Der Knopf ist für alle sichtbar.` : '✗ Noch kein Schlüssel. Der Knopf „Satz bauen“ ist ausgeblendet.'}</p>
+        <label>API-Schlüssel ${ki.gesetzt ? '(leer lassen = behalten)' : ''}</label><input type="password" name="kiKey" autocomplete="off" placeholder="sk-ant-…" spellcheck="false">
+        <label>Modell</label><input type="text" name="kiModell" value="${esc(s.kiModell || '')}" placeholder="leer = ${esc(ki.standard)}" spellcheck="false" autocapitalize="none">
+        <div class="hint">Leer lassen. Gibt es das Modell nicht mehr, wird automatisch ein aktuelles Haiku-Modell genommen. Abschalten für alle geht unter „Funktionen sperren“.</div>
+        <div id="kierr"></div>
+        <div class="actions"><button class="primary">Speichern</button><button type="button" id="kitest" ${ki.gesetzt ? '' : 'disabled'}>Jetzt testen</button>${ki.gesetzt ? '<button type="button" class="danger" id="kidel">Schlüssel löschen</button>' : ''}</div></form></div>
       <div class="card"><form id="gf"><h2>Einstellungen für alle</h2>
       <label>Ausbildungsbereiche (einer pro Zeile)</label><textarea name="bereiche" rows="4">${esc(s.bereiche.join('\n'))}</textarea>
       <div class="hint">Jeder kann zusätzlich eigene Bereiche über seine Arbeitsorte anlegen.</div>
@@ -1671,6 +1719,23 @@
           const r = await api('GET', '/api/admin/ltcheck');
           errBox($('#ltres'), r.ok ? `Funktioniert (${r.treffer} Fehler im Testsatz gefunden, ${r.ms} ms).` : `Nicht erreichbar: ${r.fehler || 'unbekannt'} (Adresse ${r.adresse})`, r.ok ? 'ok' : 'err');
         } catch (x) { errBox($('#ltres'), x.message); }
+      });
+    };
+    const kiSpeichern = async (body, msg) => {
+      try { await api('POST', '/api/admin/settings', { settings: body }); errBox($('#kierr'), msg, 'ok'); setTimeout(() => render(), 900); }
+      catch (x) { errBox($('#kierr'), x.message); }
+    };
+    $('#kif').onsubmit = (e) => { e.preventDefault(); const f = e.target; kiSpeichern({ kiKey: f.kiKey.value, kiModell: f.kiModell.value }, 'Gespeichert.'); };
+    if ($('#kidel')) $('#kidel').onclick = async () => {
+      if (await modal('<h2>Schlüssel löschen?</h2><p>Danach ist „Satz bauen“ für alle ausgeblendet.</p><div class="actions"><button class="danger" data-m="yes">Löschen</button><button data-m="no">Abbrechen</button></div>') === 'yes') kiSpeichern({ kiKey: '-' }, 'Schlüssel gelöscht.');
+    };
+    $('#kitest').onclick = async (e) => {
+      await busy(e.target, async () => {
+        errBox($('#kierr'), 'Teste …', 'info');
+        try {
+          const r = await api('GET', '/api/admin/kitest');
+          errBox($('#kierr'), r.ok ? `Funktioniert (${r.ms} ms, Modell ${r.modell}). Aus „grundplatte angerissen 2 fasen gefeilt werkstatt aufgeräumt“ wurde: „${r.text}“` : `Geht nicht: ${r.fehler}`, r.ok ? 'ok' : 'err');
+        } catch (x) { errBox($('#kierr'), x.message); }
       });
     };
     $('#gf').onsubmit = async (e) => {
