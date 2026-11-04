@@ -17,7 +17,7 @@ const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '4.1.0';
+const VERSION = '4.2.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -62,6 +62,7 @@ const DEFAULT_SETTINGS = {
   dateiname: 'Berichtsheft_{nachname}_NR{nr}',
   bearbeitbarTage: 90,
   ltUrl: '',
+  kiAnbieter: '',
   kiModell: '',
   gesperrt: {},
   speicherMB: 20,
@@ -193,9 +194,11 @@ function clientIp(req) {
 
 const SETUP_FILE = path.join(SECRET, 'setup-code.txt');
 /* API-Schluessel der Schreib-KI: nur in einer eigenen Datei, nie in der Datenbank oder im Browser */
-const KI_FILE = path.join(SECRET, 'ki-schluessel.txt');
-const kiKey = () => { try { return fs.readFileSync(KI_FILE, 'utf8').trim(); } catch { return process.env.ANTHROPIC_API_KEY || ''; } };
+const kiAnbieter = () => (KI.ANBIETER[db.settings.kiAnbieter] ? db.settings.kiAnbieter : KI.STANDARD_ANBIETER);
+const kiDatei = (a) => path.join(SECRET, a === 'anthropic' ? 'ki-schluessel.txt' : `ki-schluessel-${a}.txt`);
+const kiKey = (a = kiAnbieter()) => { try { return fs.readFileSync(kiDatei(a), 'utf8').trim(); } catch { return ''; } };
 const kiBereit = () => !!kiKey();
+const kiZugang = () => ({ anbieter: kiAnbieter(), key: kiKey(), modell: db.settings.kiModell || '' });
 const needsSetup = () => !Object.values(db.users).some((u) => u.role === 'admin');
 function setupCode() {
   if (!needsSetup()) return null;
@@ -556,7 +559,7 @@ route('GET', '/api/health', null, (ctx) => (ctx.user || ['127.0.0.1', '::1', '::
 route('GET', '/api/state', null, (ctx) => ({
   setup: needsSetup(), user: publicUser(ctx.user), version: ctx.user ? VERSION : undefined, missing: ctx.user ? profileMissing(ctx.user) : [],
   /* Fuer die Datenschutzerklaerung, die auch ohne Anmeldung lesbar sein muss */
-  datenschutz: { ...db.settings.betreiber, bearbeitbarTage: db.settings.bearbeitbarTage },
+  datenschutz: { ...db.settings.betreiber, bearbeitbarTage: db.settings.bearbeitbarTage, ki: kiBereit() && !(db.settings.gesperrt || {}).ki ? kiAnbieter() : '' },
   settings: ctx.user ? {
     arbeitstage: db.settings.arbeitstage, typen: W.TYPEN, vorbelegung: db.settings.vorbelegung,
     bearbeitbarTage: db.settings.bearbeitbarTage, bereiche: db.settings.bereiche,
@@ -984,7 +987,7 @@ route('POST', '/api/admin/delete', 'admin', (ctx) => {
 /* Rechtschreibpruefung testen (fuer die Fehlersuche im Admin-Bereich) */
 route('GET', '/api/admin/kitest', 'admin', async () => {
   if (!kiBereit()) return { ok: false, fehler: 'Noch kein API-Schlüssel eingetragen.' };
-  try { const r = await KI.testen(kiKey(), db.settings.kiModell); return { ok: true, ...r }; }
+  try { const r = await KI.testen(kiZugang()); return { ok: true, anbieter: KI.ANBIETER[kiAnbieter()].name, ...r }; }
   catch (e) { return { ok: false, fehler: e.message }; }
 });
 
@@ -1018,7 +1021,7 @@ route('POST', '/api/ki', 'azubi', async (ctx) => {
   const maxZeichen = Math.round(Math.min(330, Math.max(110, schnitt * 1.4, stichworte.length * 1.3)));
   let erg;
   try {
-    erg = await KI.satzBauen({ key: kiKey(), modell: db.settings.kiModell, stichworte, typ: day.type, bereich: r.bereich, beruf: u.beruf, beispiele, andereTage, vorher, maxZeichen });
+    erg = await KI.satzBauen({ zugang: kiZugang(), stichworte, typ: day.type, bereich: r.bereich, beruf: u.beruf, beispiele, andereTage, vorher, maxZeichen });
   } catch (e) { fail(502, e.message); }
   const i = W.weekday(date), fit = fitDay(erg.text, i);
   return { text: erg.text, passt: fit.fits, beispiele: beispiele.length };
@@ -1030,7 +1033,12 @@ route('GET', '/api/admin/ltcheck', 'admin', async (ctx) => {
   return { ok: !r.error, ms: Date.now() - t0, treffer: (r.matches || []).length, fehler: r.error ? lastLtError : '', adresse: (db.settings.ltUrl || LT_DEFAULT) };
 });
 
-route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER, funktionen: FUNKTIONEN, ki: { gesetzt: kiBereit(), ende: kiKey().slice(-4), standard: KI.STANDARD_MODELL } }));
+route('GET', '/api/admin/settings', 'admin', () => ({ settings: db.settings, bundeslaender: W.BUNDESLAENDER, funktionen: FUNKTIONEN,
+  ki: {
+    anbieter: kiAnbieter(),
+    liste: Object.fromEntries(Object.entries(KI.ANBIETER).map(([k, a]) => [k, { name: a.name, modell: a.modell, konsole: a.konsole, beispiel: a.beispiel, gesetzt: !!kiKey(k), ende: kiKey(k).slice(-4) }]))
+  }
+}));
 
 route('POST', '/api/admin/settings', 'admin', (ctx) => {
   const b = ctx.body.settings || {}, s = db.settings;
@@ -1042,14 +1050,19 @@ route('POST', '/api/admin/settings', 'admin', (ctx) => {
   if ('ltUrl' in b) { const v = str(b.ltUrl, 200); if (v && !/^https?:\/\/[^\s]+$/.test(v)) fail(400, 'Adresse der Rechtschreibprüfung ungültig.'); s.ltUrl = v; }
   if (b.gesperrt && typeof b.gesperrt === 'object') s.gesperrt = Object.fromEntries(Object.keys(FUNKTIONEN).map((k) => [k, !!b.gesperrt[k]]));
   if ('speicherMB' in b) s.speicherMB = num(b.speicherMB, 1, 10000, 20);
-  if ('kiModell' in b) { const v = str(b.kiModell, 80).trim(); if (v && !/^[a-z0-9.\-_:@]+$/i.test(v)) fail(400, 'Ungültiger Modellname.'); s.kiModell = v; }
+  if ('kiAnbieter' in b) {
+    if (!KI.ANBIETER[b.kiAnbieter]) fail(400, 'Unbekannter Anbieter.');
+    if (b.kiAnbieter !== s.kiAnbieter) s.kiModell = ''; /* Modellname gehoert zum Anbieter */
+    s.kiAnbieter = b.kiAnbieter;
+  }
+  if ('kiModell' in b) { const v = str(b.kiModell, 80).trim(); if (v && !/^[a-z0-9.\-_:@/]+$/i.test(v)) fail(400, 'Ungültiger Modellname.'); s.kiModell = v; }
   if ('kiKey' in b) {
-    const k = str(b.kiKey, 300).trim();
-    if (k === '-') { try { fs.unlinkSync(KI_FILE); } catch {} }
+    const a = kiAnbieter(), k = str(b.kiKey, 300).trim();
+    if (k === '-') { try { fs.unlinkSync(kiDatei(a)); } catch {} }
     else if (k) {
-      if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(k)) fail(400, 'Das sieht nicht nach einem API-Schlüssel von Anthropic aus (beginnt mit sk-ant-).');
+      if (!KI.ANBIETER[a].schluessel.test(k)) fail(400, `Das sieht nicht nach einem Schlüssel von ${KI.ANBIETER[a].name.replace(/ \(.*\)/, '')} aus (beginnt mit ${KI.ANBIETER[a].beispiel}).`);
       fs.mkdirSync(SECRET, { recursive: true, mode: 0o700 });
-      fs.writeFileSync(KI_FILE, k + '\n', { mode: 0o600 });
+      fs.writeFileSync(kiDatei(a), k + '\n', { mode: 0o600 });
     }
   }
   if (b.betreiber && typeof b.betreiber === 'object') {

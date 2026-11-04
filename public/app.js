@@ -373,7 +373,11 @@
       ${h('6. Wo liegen die Daten?')}
       <p>Auf einem gemieteten Server der Hetzner Online GmbH (Industriestr. 25, 91710 Gunzenhausen) in ${esc(d.serverOrt || 'Deutschland')}. Hetzner verarbeitet die Daten nur als technischer Dienstleister (Auftragsverarbeitung) und nicht für eigene Zwecke. Die Verbindung ist per https verschlüsselt.</p>
       <p>Die Rechtschreib- und Grammatikprüfung läuft auf demselben Server. Deine Texte werden dafür <strong>nicht</strong> an andere Anbieter geschickt. Es werden keine Schriften, Skripte oder Inhalte von fremden Servern geladen.</p>
-      <p><strong>Schreib-KI (nur wenn du sie benutzt):</strong> Tippst du bei einem Tag auf „Satz bauen“ oder „Neu formulieren“, werden die Stichworte dieses Tages, die anderen Texte dieser Woche, einige Texte aus deinen fertigen Berichten (als Stil-Beispiele), dein Lehrberuf und der Ausbildungsbereich an die Claude-API von Anthropic (Anthropic PBC, USA; Datenverarbeitung auch in den USA) geschickt, damit daraus ein Satz formuliert wird. Name, Firma, Unterschrift und Konto-Daten werden <strong>nicht</strong> mitgeschickt. Anthropic nutzt Daten aus der API nach eigenen Angaben nicht zum Trainieren und löscht sie nach kurzer Zeit. Ohne Antippen wird nichts übertragen. Schreib also keine Namen von Personen oder Geheimnisse des Betriebs in die Stichworte, wenn du die KI nutzt.</p>
+      ${d.ki ? `<p><strong>Schreib-KI (nur wenn du sie benutzt):</strong> Tippst du bei einem Tag auf „Satz bauen“ oder „Neu formulieren“, werden die Stichworte dieses Tages, die anderen Texte dieser Woche, einige Texte aus deinen fertigen Berichten (als Stil-Beispiele), dein Lehrberuf und der Ausbildungsbereich an ${{
+        groq: 'den KI-Dienst Groq (Groq, Inc., USA; Verarbeitung in den USA)',
+        gemini: 'die Gemini-API von Google (Google LLC, USA). Beim kostenlosen Zugang darf Google die Texte zur Verbesserung seiner Dienste nutzen, auch Menschen können sie dafür lesen',
+        anthropic: 'die Claude-API von Anthropic (Anthropic PBC, USA; Verarbeitung in den USA). Anthropic nutzt API-Daten nach eigenen Angaben nicht zum Trainieren'
+      }[d.ki] || 'einen KI-Dienst'} geschickt, damit daraus ein Satz formuliert wird. Name, Firma, Unterschrift und Konto-Daten werden <strong>nicht</strong> mitgeschickt. Ohne Antippen wird nichts übertragen. Schreib also keine Namen von Personen oder Geheimnisse des Betriebs in die Stichworte, wenn du die KI nutzt.</p>` : ''}
       ${h('7. Wer kann die Daten sehen?')}
       <p>Deine Berichte siehst nur du. Der Admin-Bereich zeigt nur Kontodaten (Name, Firma, Lehrberuf, Aktivität und belegten Speicher), keine Berichte. Als Betreiber des Servers hat der Verantwortliche technisch Zugriff auf alle gespeicherten Daten. Er nutzt diesen Zugriff nur für Wartung, Fehlerbehebung und Sicherungen.</p>
       ${h('8. Wie lange werden Daten gespeichert?')}
@@ -1676,13 +1680,14 @@
       <div class="card"><h2>Rechtschreibprüfung testen</h2><p class="muted">Prüft, ob der Dienst auf dem Server antwortet.</p>
       <div class="actions nomargin"><button id="lttest">Jetzt testen</button></div><div id="ltres"></div></div>
       <div class="card"><form id="kif"><h2>Schreib-KI</h2>
-        <p class="muted">Macht aus Stichworten einen kurzen Satz („✨ Satz bauen“ bei jedem Tag). Läuft über die Claude-API von Anthropic. Dafür brauchst du einen API-Schlüssel von <strong>console.anthropic.com</strong> (Konto anlegen, Guthaben aufladen, unter „API Keys“ einen Schlüssel erstellen). Ein Satz kostet mit Haiku etwa 0,1 Cent.</p>
-        <p class="small-t">${ki.gesetzt ? `✓ Schlüssel ist hinterlegt (endet auf …${esc(ki.ende)}). Der Knopf ist für alle sichtbar.` : '✗ Noch kein Schlüssel. Der Knopf „Satz bauen“ ist ausgeblendet.'}</p>
-        <label>API-Schlüssel ${ki.gesetzt ? '(leer lassen = behalten)' : ''}</label><input type="password" name="kiKey" autocomplete="off" placeholder="sk-ant-…" spellcheck="false">
-        <label>Modell</label><input type="text" name="kiModell" value="${esc(s.kiModell || '')}" placeholder="leer = ${esc(ki.standard)}" spellcheck="false" autocapitalize="none">
-        <div class="hint">Leer lassen. Gibt es das Modell nicht mehr, wird automatisch ein aktuelles Haiku-Modell genommen. Abschalten für alle geht unter „Funktionen sperren“.</div>
+        <p class="muted">Macht aus Stichworten einen kurzen Satz („✨ Satz bauen“ bei jedem Tag). Dafür brauchst du einen kostenlosen Zugang bei einem KI-Anbieter.</p>
+        <label>Anbieter</label><select name="kiAnbieter" id="kian">${Object.entries(ki.liste || {}).map(([k, a]) => `<option value="${k}" ${k === ki.anbieter ? 'selected' : ''}>${esc(a.name)}${a.gesetzt ? ' ✓' : ''}</option>`).join('')}</select>
+        <div id="kiinfo"></div>
+        <label>API-Schlüssel <span id="kikeyhint" class="muted"></span></label><input type="password" name="kiKey" id="kikey" autocomplete="off" spellcheck="false">
+        <label>Modell</label><input type="text" name="kiModell" id="kimod" value="${esc(s.kiModell || '')}" spellcheck="false" autocapitalize="none">
+        <div class="hint">Leer lassen. Gibt es das Modell nicht mehr, wird automatisch ein passendes genommen. Abschalten für alle geht unter „Funktionen sperren“.</div>
         <div id="kierr"></div>
-        <div class="actions"><button class="primary">Speichern</button><button type="button" id="kitest" ${ki.gesetzt ? '' : 'disabled'}>Jetzt testen</button>${ki.gesetzt ? '<button type="button" class="danger" id="kidel">Schlüssel löschen</button>' : ''}</div></form></div>
+        <div class="actions"><button class="primary">Speichern</button><button type="button" id="kitest">Jetzt testen</button><button type="button" class="danger" id="kidel">Schlüssel löschen</button></div></form></div>
       <div class="card"><form id="gf"><h2>Einstellungen für alle</h2>
       <label>Ausbildungsbereiche (einer pro Zeile)</label><textarea name="bereiche" rows="4">${esc(s.bereiche.join('\n'))}</textarea>
       <div class="hint">Jeder kann zusätzlich eigene Bereiche über seine Arbeitsorte anlegen.</div>
@@ -1721,20 +1726,37 @@
         } catch (x) { errBox($('#ltres'), x.message); }
       });
     };
+    /* Schreib-KI: Anleitung je Anbieter */
+    const KI_HILFE = {
+      groq: 'Kostenlos, ohne Kreditkarte. So geht’s: <strong>console.groq.com</strong> öffnen → mit Google oder E-Mail anmelden → links „API Keys“ → „Create API Key“ → Schlüssel kopieren (beginnt mit <code>gsk_</code>) und unten einfügen. Grenze: etwa 1.000 Sätze pro Tag. Groq sitzt in den USA.',
+      gemini: 'Kostenlos, ohne Kreditkarte. So geht’s: <strong>aistudio.google.com</strong> öffnen → mit Google-Konto anmelden → „Get API key“ → „API-Schlüssel erstellen“ → kopieren (beginnt mit <code>AIza</code>) und unten einfügen. Achtung: Beim kostenlosen Zugang darf Google die Texte zur Verbesserung seiner Dienste nutzen.',
+      anthropic: 'Kostenpflichtig (etwa 0,1 Cent pro Satz). <strong>console.anthropic.com</strong> → Guthaben aufladen → „API Keys“ → Schlüssel erstellen (beginnt mit <code>sk-ant-</code>).'
+    };
+    const kiZeigen = () => {
+      const k = $('#kian').value, a = (ki.liste || {})[k] || {};
+      $('#kiinfo').innerHTML = `<div class="hint">${KI_HILFE[k] || ''}</div><p class="small-t">${a.gesetzt ? `✓ Schlüssel ist hinterlegt (endet auf …${esc(a.ende)}).` : '✗ Für diesen Anbieter ist noch kein Schlüssel hinterlegt.'}${k === ki.anbieter ? (a.gesetzt ? ' Wird gerade benutzt, der Knopf ist für alle sichtbar.' : ' Der Knopf „Satz bauen“ ist ausgeblendet.') : ' <strong>Mit „Speichern“ auf diesen Anbieter umstellen.</strong>'}</p>`;
+      $('#kikey').placeholder = a.beispiel || '';
+      $('#kikeyhint').textContent = a.gesetzt ? '(leer lassen = behalten)' : '';
+      $('#kimod').placeholder = 'leer = ' + (a.modell || '');
+      if (k !== ki.anbieter) $('#kimod').value = '';
+      $('#kitest').disabled = !(a.gesetzt && k === ki.anbieter);
+      $('#kidel').hidden = !a.gesetzt;
+    };
+    $('#kian').onchange = kiZeigen; kiZeigen();
     const kiSpeichern = async (body, msg) => {
       try { await api('POST', '/api/admin/settings', { settings: body }); errBox($('#kierr'), msg, 'ok'); setTimeout(() => render(), 900); }
       catch (x) { errBox($('#kierr'), x.message); }
     };
-    $('#kif').onsubmit = (e) => { e.preventDefault(); const f = e.target; kiSpeichern({ kiKey: f.kiKey.value, kiModell: f.kiModell.value }, 'Gespeichert.'); };
-    if ($('#kidel')) $('#kidel').onclick = async () => {
-      if (await modal('<h2>Schlüssel löschen?</h2><p>Danach ist „Satz bauen“ für alle ausgeblendet.</p><div class="actions"><button class="danger" data-m="yes">Löschen</button><button data-m="no">Abbrechen</button></div>') === 'yes') kiSpeichern({ kiKey: '-' }, 'Schlüssel gelöscht.');
+    $('#kif').onsubmit = (e) => { e.preventDefault(); const f = e.target; kiSpeichern({ kiAnbieter: f.kiAnbieter.value, kiKey: f.kiKey.value, kiModell: f.kiModell.value }, 'Gespeichert. Jetzt mit „Jetzt testen“ prüfen.'); };
+    $('#kidel').onclick = async () => {
+      if (await modal('<h2>Schlüssel löschen?</h2><p>Ist das der benutzte Anbieter, ist „Satz bauen“ danach für alle ausgeblendet.</p><div class="actions"><button class="danger" data-m="yes">Löschen</button><button data-m="no">Abbrechen</button></div>') === 'yes') kiSpeichern({ kiAnbieter: $('#kian').value, kiKey: '-' }, 'Schlüssel gelöscht.');
     };
     $('#kitest').onclick = async (e) => {
       await busy(e.target, async () => {
         errBox($('#kierr'), 'Teste …', 'info');
         try {
           const r = await api('GET', '/api/admin/kitest');
-          errBox($('#kierr'), r.ok ? `Funktioniert (${r.ms} ms, Modell ${r.modell}). Aus „grundplatte angerissen 2 fasen gefeilt werkstatt aufgeräumt“ wurde: „${r.text}“` : `Geht nicht: ${r.fehler}`, r.ok ? 'ok' : 'err');
+          errBox($('#kierr'), r.ok ? `Funktioniert (${r.anbieter}, Modell ${r.modell}, ${r.ms} ms). Aus „grundplatte angerisen 2 fasen gefeilt werkstat aufgeräumt“ wurde: „${r.text}“` : `Geht nicht: ${r.fehler}`, r.ok ? 'ok' : 'err');
         } catch (x) { errBox($('#kierr'), x.message); }
       });
     };
