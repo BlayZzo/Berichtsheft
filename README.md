@@ -71,6 +71,20 @@ Eigenständiges Programm unter https://bh-bremen.de
 - Protokoll: `/var/log/berichtsheft-update.log`
 - Sicherungen: `/var/backups/berichtsheft` (täglich 14 Tage, monatlich 4 Jahre)
 
+## Sicherheit
+- Nur angemeldet nutzbar; jede Anfrage wird auf dem Server geprüft (Rolle, Sperren, Besitz des Berichts).
+  Der Admin sieht keine Berichte.
+- Passwörter mit scrypt und Salt; Sitzungs-Token werden nur als SHA-256 gespeichert.
+- Cookie `HttpOnly`, `SameSite=Strict`, `Secure`; Änderungen nur mit eigenem Kopf `X-BH` und als JSON (Schutz vor CSRF).
+- Anmeldung: Sperre nach 8 Fehlversuchen (IP und Benutzer, 15 Minuten), wachsende Verzögerung, unsichtbares Bot-Feld.
+- Begrenzung pro IP: 400 API-Anfragen pro Minute, 60 für teure Anfragen (PDF, ZIP, Import, KI).
+- Eingaben: nur erlaubte Felder, Längen und Wertebereiche geprüft, `__proto__` & Co. verworfen.
+- Uploads: Unterschrift nur PNG (max. 600 KB), PDFs max. 10 MB und werden nicht gespeichert; Entpacken begrenzt
+  (Schutz vor „Zip-Bomben“).
+- Header: strenge CSP (keine fremden Skripte), HSTS, X-Frame-Options, nosniff, COOP/CORP, Referrer-Policy.
+- KI-Schlüssel nur in `secret/` (Rechte 600), nie in der Datenbank, im Browser oder im Repository.
+- Keine Fremdpakete (nur Node.js-Bordmittel), daher keine angreifbaren Abhängigkeiten.
+
 ## Hinweis zur Unterschrift
 Die eingefügte Unterschrift ist ein Bild, keine qualifizierte elektronische Signatur.
 Elektronische Ausbildungsnachweise sind nach § 13 BBiG erlaubt. Ob der Betrieb und die Kammer

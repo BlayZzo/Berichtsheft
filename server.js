@@ -17,7 +17,7 @@ const { decodePng, encodePng } = require('./lib/png');
 const { ideas } = require('./lib/ideen');
 const { zip } = require('./lib/zip');
 
-const VERSION = '4.2.0';
+const VERSION = '4.3.0';
 const PORT = Number(process.env.PORT) || 8090;
 const HOST = process.env.HOST || '127.0.0.1';
 const ROOT = __dirname;
@@ -38,7 +38,11 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), interest-cohort=()',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'X-Permitted-Cross-Domain-Policies': 'none',
+  ...(process.env.BH_SECURE === '1' ? { 'Strict-Transport-Security': 'max-age=31536000' } : {})
 };
 
 /* Funktionen, die der Admin voruebergehend sperren kann */
@@ -184,6 +188,21 @@ function limited(key) {
 }
 function failed(key) { (attempts.get(key) || attempts.set(key, []).get(key)).push(Date.now()); }
 setInterval(() => { const now = Date.now(); for (const [k, l] of attempts) if (!l.some((t) => now - t < 15 * 60e3)) attempts.delete(k); }, 10 * 60e3).unref();
+
+/* Allgemeine Begrenzung pro IP und Minute (schuetzt vor Bots und Ueberlastung) */
+const TEUER = new Set(['/api/pdf', '/api/export', '/api/report/import', '/api/blank', '/api/ki', '/api/admin/kitest', '/api/admin/ltcheck']);
+const takt = new Map();
+function zuViele(ip, pathname) {
+  const min = Math.floor(Date.now() / 60e3);
+  let t = takt.get(ip);
+  if (!t || t.min !== min) { t = { min, n: 0, teuer: 0 }; takt.set(ip, t); }
+  t.n++;
+  if (TEUER.has(pathname)) t.teuer++;
+  return t.n > 400 || t.teuer > 60;
+}
+setInterval(() => { const min = Math.floor(Date.now() / 60e3); for (const [k, t] of takt) if (t.min < min) takt.delete(k); }, 60e3).unref();
+const warte = (ms) => new Promise((ok) => setTimeout(ok, ms));
+const fehlversuche = (key) => (attempts.get(key) || []).filter((t) => Date.now() - t < 15 * 60e3).length;
 
 function clientIp(req) {
   if (TRUST_PROXY) { const f = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim(); if (f) return f; }
@@ -505,7 +524,10 @@ function readBody(req, limit = 1.5e6) {
     req.on('data', (c) => { size += c.length; if (size > limit) { reject(new HttpError(413, 'Zu viele Daten.')); req.destroy(); } else chunks.push(c); });
     req.on('end', () => {
       if (!chunks.length) return resolve({});
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { reject(new HttpError(400, 'Ungültige Daten.')); }
+      if (!/^application\/json\b/i.test(String(req.headers['content-type'] || ''))) return reject(new HttpError(415, 'Ungültiges Datenformat.'));
+      /* __proto__ & Co. nie uebernehmen (Schutz vor Prototype Pollution) */
+      const sicher = (k, v) => (k === '__proto__' || k === 'constructor' || k === 'prototype' ? undefined : v);
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'), sicher)); } catch { reject(new HttpError(400, 'Ungültige Daten.')); }
     });
     req.on('error', reject);
   });
@@ -585,14 +607,20 @@ route('POST', '/api/setup', null, (ctx) => {
   return { ok: true };
 });
 
-route('POST', '/api/login', null, (ctx) => {
+route('POST', '/api/login', null, async (ctx) => {
   const username = str(ctx.body.username, 40).toLowerCase();
   const kIp = 'ip:' + ctx.ip, kUser = 'u:' + username;
   if (limited(kIp) || limited(kUser)) fail(429, 'Zu viele Fehlversuche. Bitte 15 Minuten warten.');
+  /* Falle fuer Bots: das Feld "website" ist fuer Menschen unsichtbar und bleibt leer */
+  if (str(ctx.body.website, 200)) { failed(kIp); await warte(1500); fail(401, 'Benutzername oder Passwort falsch.'); }
   const u = Object.values(db.users).find((x) => x.username === username);
   const ok = u && checkPw(u, String(ctx.body.password || ''));
   if (!u) hashPw('x'); /* gleiche Rechenzeit, damit man Benutzernamen nicht erraten kann */
-  if (!ok) { failed(kIp); failed(kUser); fail(401, 'Benutzername oder Passwort falsch.'); }
+  if (!ok) {
+    failed(kIp); failed(kUser);
+    await warte(Math.min(3000, 250 * Math.max(fehlversuche(kIp), fehlversuche(kUser)))); /* jeder Fehlversuch bremst mehr */
+    fail(401, 'Benutzername oder Passwort falsch.');
+  }
   if (!u.active) fail(403, 'Dieses Konto ist gesperrt. Bitte beim Admin melden.');
   gesperrt('login', u);
   attempts.delete(kUser);
@@ -1084,6 +1112,7 @@ async function handle(req, res) {
   try {
     const r = routes.find((x) => x.m === req.method && x.p === pathname);
     if (!r) fail(404, 'Unbekannte Anfrage.');
+    if (zuViele(clientIp(req), pathname)) fail(429, 'Zu viele Anfragen. Bitte kurz warten.');
     /* Schutz vor fremden Seiten: Aenderungen nur mit eigenem Kopf */
     if (req.method !== 'GET' && req.headers['x-bh'] !== '1') fail(403, 'Anfrage abgelehnt.');
     const user = currentUser(req);

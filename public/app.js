@@ -256,6 +256,7 @@
       <form id="f">
         <label>Benutzername</label><input type="text" name="username" autocomplete="username" autocapitalize="none" required>
         <label>Passwort</label><input type="password" name="password" autocomplete="current-password" required>
+        <div class="hp" aria-hidden="true"><label>Website</label><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
         <div id="err"></div>
         <div class="actions"><button class="primary">Anmelden</button></div>
       </form>

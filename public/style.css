@@ -358,3 +358,6 @@ body.selmode main { padding-bottom: 9rem !important; }
 .kiwait { color: var(--brand-2); font-weight: 600; animation: kipuls 1.2s ease-in-out infinite; }
 @keyframes kipuls { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .kiwait { animation: none; } }
+
+/* Falle fuer Bots im Anmeldeformular: fuer Menschen unsichtbar */
+.hp { position: absolute !important; left: -10000px !important; width: 1px; height: 1px; overflow: hidden; }
